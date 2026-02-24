@@ -1,0 +1,5 @@
+{
+  "name": "Nemo Bot",
+  "description": "Un assistant intelligent inspiré de l'interface iOS, propulsé par Gemini.",
+  "requestFramePermissions": ["microphone"]
+}
