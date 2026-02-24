@@ -58,6 +58,104 @@
   border-bottom-left-radius: 4px;
 }
 
+/* Premium AI Message Layout */
+.ai-message-container {
+  @apply w-full py-8 px-2 md:px-4 relative;
+  border-top: 1px solid rgba(139, 92, 246, 0.1);
+  border-bottom: 1px solid rgba(139, 92, 246, 0.1);
+  background: linear-gradient(to right, rgba(139, 92, 246, 0.02), transparent, rgba(139, 92, 246, 0.02));
+}
+
+.luminous-line {
+  height: 1px;
+  background: linear-gradient(to right, transparent, rgba(139, 92, 246, 0.5), transparent);
+  @apply my-8 w-full;
+}
+
+.markdown-premium {
+  @apply text-white/90 leading-relaxed;
+}
+
+.markdown-premium h1 {
+  @apply text-4xl md:text-5xl font-bold mb-6 mt-8 tracking-tight text-white;
+  background: linear-gradient(to bottom, #fff 0%, #c4b5fd 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 0 12px rgba(139, 92, 246, 0.3));
+}
+
+.markdown-premium h2 {
+  @apply text-2xl md:text-3xl font-bold mb-4 mt-10 text-violet-300 tracking-wide uppercase;
+}
+
+.markdown-premium h3 {
+  @apply text-lg md:text-xl font-semibold mb-3 mt-6 text-violet-400/80;
+}
+
+.markdown-premium p {
+  @apply mb-4 text-base md:text-lg font-light;
+}
+
+.markdown-premium hr {
+  @apply border-none h-px bg-gradient-to-r from-transparent via-violet-500/30 to-transparent my-10;
+}
+
+.markdown-premium ul, .markdown-premium ol {
+  @apply mb-6 ml-6 space-y-3;
+}
+
+.markdown-premium li {
+  @apply text-white/80;
+}
+
+.markdown-premium li strong {
+  @apply text-violet-300 font-bold;
+}
+
+.markdown-premium blockquote {
+  @apply border-l-4 border-violet-500/50 pl-6 py-2 my-6 italic text-white/60 bg-white/5 rounded-r-xl;
+}
+
+.markdown-premium table {
+  @apply w-full border-collapse my-8 overflow-hidden rounded-2xl border border-white/10;
+}
+
+.markdown-premium th {
+  @apply bg-violet-500/20 text-violet-200 font-bold p-4 text-left border-b border-white/10;
+}
+
+.markdown-premium td {
+  @apply p-4 border-b border-white/5 text-white/70 bg-white/2;
+}
+
+.markdown-premium tr:last-child td {
+  @apply border-b-0;
+}
+
+.markdown-premium tr:hover td {
+  @apply bg-white/5;
+}
+
+.markdown-premium code {
+  @apply bg-violet-500/10 text-violet-300 px-2 py-0.5 rounded font-mono text-sm;
+}
+
+.markdown-premium pre {
+  @apply bg-[#0a0a0c] border border-white/10 p-6 rounded-2xl my-6 overflow-x-auto shadow-2xl;
+}
+
+.markdown-premium pre code {
+  @apply bg-transparent p-0 text-white/90;
+}
+
+.markdown-premium em {
+  @apply text-white/50 font-light italic;
+}
+
+.markdown-premium strong {
+  @apply text-violet-200 font-bold;
+}
+
 .neon-container {
   border: 1px solid rgba(139, 92, 246, 0.2);
   box-shadow: 0 0 30px rgba(0, 0, 0, 1);
@@ -65,6 +163,18 @@
 
 .neon-glow-violet {
   box-shadow: 0 0 15px rgba(139, 92, 246, 0.5), 0 0 30px rgba(139, 92, 246, 0.2);
+}
+
+.neon-border {
+  border: 1px solid rgba(139, 92, 246, 0.5);
+  box-shadow: 0 0 10px rgba(139, 92, 246, 0.3), inset 0 0 5px rgba(139, 92, 246, 0.2);
+}
+
+.premium-gradient-text {
+  background: linear-gradient(to bottom, #fff 0%, #c4b5fd 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 0 8px rgba(139, 92, 246, 0.4));
 }
 
 .neon-text-violet {

@@ -680,6 +680,18 @@ export default function App() {
         Lazarus Lab est un programme d’apprentissage et de développement axé sur l’intelligence artificielle, la programmation et la création de projets technologiques avancés.
         Ton objectif est de former des développeurs capables de comprendre, construire et déployer des systèmes intelligents modernes.
         
+        STYLE DE RÉPONSE PREMIUM (OBLIGATOIRE):
+        - Utilise des EMOJIS stratégiques pour structurer les informations.
+        - Utilise des SYMBOLES SPÉCIAUX (📌, ⚡, 💎, 🚀, 🌑) pour organiser les sections.
+        - Utilise des GROS TITRES (Markdown # ou ##) pour les sections principales.
+        - Sépare les sections avec des LIGNES HORIZONTALES (Markdown ---).
+        - Utilise des SOUS-TITRES (Markdown ###) pour les détails.
+        - Mets les points importants en GRAS (**texte**).
+        - Utilise l'ITALIQUE (*texte*) pour les nuances ou détails fins.
+        - Crée des TABLEAUX structurés pour comparer des données.
+        - Utilise des LISTES ordonnées pour les processus étape par étape.
+        - Tes réponses doivent être VISUELLEMENT RICHES et FACILES À LIRE.
+        
         Vision de Lazarus Lab:
         - Maîtriser Python, JavaScript et le développement backend.
         - Construire des intelligences artificielles personnalisées.
@@ -720,7 +732,7 @@ export default function App() {
         ` : ''}
         
         INSTRUCTIONS:
-        - Sois concis, technique mais pédagogique.
+        - Sois technique mais pédagogique.
         - Encourage l'expérimentation.
         - Si l'utilisateur fait une erreur, guide-le pour qu'il la trouve lui-même.
         ${isSearchForced ? "- L'utilisateur a explicitement demandé une recherche web. Utilise l'outil de recherche pour répondre." : ""}`;
@@ -1334,8 +1346,8 @@ export default function App() {
               <Bot className="text-white w-12 h-12" />
             </div>
             <div className="space-y-2">
-              <h2 className="text-2xl font-bold">Comment puis-je vous aider ?</h2>
-              <p className="text-white/40 text-sm px-8">Posez une question, générez une image ou analysez un fichier.</p>
+              <h2 className="text-3xl font-bold premium-gradient-text">Comment puis-je vous aider ?</h2>
+              <p className="text-white/40 text-sm px-8">Posez une question, générez une image ou analysez un fichier avec Nemo.</p>
             </div>
           </motion.div>
         )}
@@ -1347,14 +1359,12 @@ export default function App() {
               layout
               initial={{ 
                 opacity: 0, 
-                y: 10, 
-                x: message.role === 'user' ? 10 : -10,
-                scale: 0.95 
+                y: 20, 
+                scale: message.role === 'user' ? 0.95 : 1
               }}
               animate={{ 
                 opacity: 1, 
                 y: 0, 
-                x: 0,
                 scale: 1 
               }}
               transition={{ 
@@ -1365,36 +1375,43 @@ export default function App() {
               }}
               className={cn(
                 "flex w-full",
-                message.role === 'user' ? "justify-end" : "justify-start"
+                message.role === 'user' ? "justify-end px-4" : "justify-start ai-message-container"
               )}
             >
               <div
                 className={cn(
-                  "flex items-end gap-2 max-w-[85%]",
-                  message.role === 'user' ? "flex-row-reverse ml-auto" : "flex-row mr-auto"
+                  "flex gap-4",
+                  message.role === 'user' ? "flex-row-reverse max-w-[85%]" : "flex-col w-full max-w-4xl mx-auto"
                 )}
               >
                 {message.role === 'bot' && (
-                  <div className="w-8 h-8 rounded-full overflow-hidden border border-violet-500/30 flex-shrink-0 mb-1 neon-glow-violet">
-                    {nemoAvatar ? (
-                      <img src={nemoAvatar} alt="Nemo" className="w-full h-full object-cover" />
-                    ) : (
-                      <div className="w-full h-full bg-violet-900/50 flex items-center justify-center">
-                        <Bot className="w-4 h-4 text-violet-400" />
-                      </div>
-                    )}
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-10 h-10 rounded-xl overflow-hidden border border-violet-500/30 flex-shrink-0 neon-glow-violet">
+                      {nemoAvatar ? (
+                        <img src={nemoAvatar} alt="Nemo" className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full bg-violet-900/50 flex items-center justify-center">
+                          <Bot className="w-5 h-5 text-violet-400" />
+                        </div>
+                      )}
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-bold text-white tracking-widest uppercase">Nemo Bot</h4>
+                      <p className="text-[10px] text-violet-400/60 font-medium">Assistant Lazarus Lab</p>
+                    </div>
                   </div>
                 )}
+
                 <div
                   className={cn(
                     "relative group",
-                    message.role === 'user' ? "message-bubble-user" : "message-bubble-bot"
+                    message.role === 'user' ? "message-bubble-user" : "markdown-premium"
                   )}
                 >
                   {message.image && (
                     <div className={cn(
-                      "mb-3 rounded-2xl overflow-hidden border border-white/10 shadow-lg relative group/img",
-                      message.role === 'user' ? "max-w-[200px]" : "w-full"
+                      "mb-6 rounded-3xl overflow-hidden border border-white/10 shadow-2xl relative group/img",
+                      message.role === 'user' ? "max-w-[240px]" : "w-full max-w-2xl"
                     )}>
                       <img src={message.image} alt="Preview" className="w-full h-auto object-cover" />
                       
@@ -1407,20 +1424,20 @@ export default function App() {
                               link.download = `nemo-gen-${Date.now()}.png`;
                               link.click();
                             }}
-                            className="p-3 bg-white/10 hover:bg-white/20 rounded-full text-white transition-all"
+                            className="p-4 bg-white/10 hover:bg-white/20 rounded-full text-white transition-all backdrop-blur-md"
                             title="Télécharger"
                           >
-                            <Download className="w-5 h-5" />
+                            <Download className="w-6 h-6" />
                           </button>
                           <button 
                             onClick={() => {
                               const prompt = message.content.match(/"(.+)"/)?.[1] || message.content;
                               generateImage(prompt);
                             }}
-                            className="p-3 bg-white/10 hover:bg-white/20 rounded-full text-white transition-all"
+                            className="p-4 bg-white/10 hover:bg-white/20 rounded-full text-white transition-all backdrop-blur-md"
                             title="Régénérer"
                           >
-                            <RefreshCw className="w-5 h-5" />
+                            <RefreshCw className="w-6 h-6" />
                           </button>
                         </div>
                       )}
@@ -1428,25 +1445,31 @@ export default function App() {
                   )}
 
                   {message.file && !message.file.type.startsWith('image/') && (
-                    <div className="mb-3 p-3 bg-white/5 rounded-xl border border-white/10 flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-lg bg-violet-500/20 flex items-center justify-center text-violet-400">
-                        <FileText className="w-5 h-5" />
+                    <div className="mb-6 p-4 bg-white/5 rounded-2xl border border-white/10 flex items-center gap-4 max-w-md">
+                      <div className="w-12 h-12 rounded-xl bg-violet-500/20 flex items-center justify-center text-violet-400">
+                        <FileText className="w-6 h-6" />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs font-bold truncate">{message.file.name}</p>
-                        <p className="text-[10px] text-white/40">{(message.file.size / 1024).toFixed(1)} KB</p>
+                        <p className="text-sm font-bold truncate text-white">{message.file.name}</p>
+                        <p className="text-xs text-white/40">{(message.file.size / 1024).toFixed(1)} KB</p>
                       </div>
                     </div>
                   )}
 
-                  <div className="prose prose-invert prose-sm max-w-none prose-p:leading-relaxed prose-p:my-1">
+                  <div className={cn(
+                    "max-w-none",
+                    message.role === 'user' ? "prose prose-invert prose-sm" : ""
+                  )}>
                     <Markdown>{message.content}</Markdown>
                   </div>
 
                   {message.groundingMetadata?.groundingChunks && (
-                    <div className="mt-4 pt-4 border-t border-white/10 space-y-2">
-                      <p className="text-[10px] uppercase tracking-widest text-white/40 font-bold">Sources consultées</p>
-                      <div className="flex flex-wrap gap-2">
+                    <div className="mt-8 pt-8 border-t border-white/10 space-y-4">
+                      <div className="flex items-center gap-2">
+                        <Search className="w-3 h-3 text-violet-400" />
+                        <p className="text-[10px] uppercase tracking-widest text-white/40 font-bold">Sources & Références</p>
+                      </div>
+                      <div className="flex flex-wrap gap-3">
                         {message.groundingMetadata.groundingChunks.map((chunk: any, idx: number) => (
                           chunk.web && (
                             <a 
@@ -1454,10 +1477,10 @@ export default function App() {
                               href={chunk.web.uri}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-[10px] text-violet-300 transition-all group/link"
+                              className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-violet-500/10 border border-white/10 hover:border-violet-500/30 rounded-xl text-xs text-violet-300 transition-all group/link"
                             >
                               <ExternalLink className="w-3 h-3 opacity-50 group-hover/link:opacity-100" />
-                              <span className="truncate max-w-[120px]">{chunk.web.title}</span>
+                              <span className="truncate max-w-[180px]">{chunk.web.title}</span>
                             </a>
                           )
                         ))}
@@ -1605,7 +1628,7 @@ export default function App() {
         </AnimatePresence>
 
         <div className={cn(
-          "glass-input rounded-[30px] p-2 flex flex-col gap-2 transition-all duration-500",
+          "glass-input rounded-[30px] p-2 flex flex-col gap-2 transition-all duration-500 neon-border",
           isLoading && "thinking-glow"
         )}>
           {attachedFile && (
