@@ -117,15 +117,16 @@
 }
 
 .markdown-premium table {
-  @apply w-full border-collapse my-8 overflow-hidden rounded-2xl border border-white/10;
+  @apply w-full border-collapse my-8 overflow-x-auto block md:table rounded-2xl border border-white/10 shadow-2xl;
+  background: rgba(255, 255, 255, 0.02);
 }
 
 .markdown-premium th {
-  @apply bg-violet-500/20 text-violet-200 font-bold p-4 text-left border-b border-white/10;
+  @apply bg-violet-500/20 text-violet-200 font-bold p-4 text-left border-b border-white/10 whitespace-nowrap;
 }
 
 .markdown-premium td {
-  @apply p-4 border-b border-white/5 text-white/70 bg-white/2;
+  @apply p-4 border-b border-white/5 text-white/70 whitespace-nowrap md:whitespace-normal;
 }
 
 .markdown-premium tr:last-child td {
@@ -134,6 +135,40 @@
 
 .markdown-premium tr:hover td {
   @apply bg-white/5;
+}
+
+/* Code Block Enhancements */
+.code-block-container {
+  @apply relative my-6;
+}
+
+.code-block-container:hover .copy-code-btn {
+  @apply opacity-100;
+}
+
+.copy-code-btn {
+  @apply absolute top-3 right-3 p-2 bg-white/5 hover:bg-violet-500/20 border border-white/10 rounded-lg text-white/40 hover:text-white transition-all opacity-0 z-10 backdrop-blur-md;
+}
+
+/* Message Actions */
+.message-actions {
+  @apply flex items-center gap-1 mt-4 opacity-0 group-hover:opacity-100 transition-opacity duration-300;
+}
+
+.action-btn {
+  @apply p-2 hover:bg-white/5 rounded-lg text-white/30 hover:text-violet-400 transition-all flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest;
+}
+
+.action-btn-active {
+  @apply text-violet-400 bg-violet-500/10;
+}
+
+.regen-menu {
+  @apply absolute bottom-full left-0 mb-2 bg-[#0a0a0c] border border-white/10 rounded-xl p-1 shadow-2xl z-20 flex flex-col min-w-[120px];
+}
+
+.regen-item {
+  @apply px-3 py-2 hover:bg-white/5 rounded-lg text-[10px] font-bold uppercase tracking-widest text-white/60 hover:text-white transition-all text-left flex items-center gap-2;
 }
 
 .markdown-premium code {
@@ -156,9 +191,45 @@
   @apply text-violet-200 font-bold;
 }
 
+/* Full Screen Input Mode */
+.full-screen-input-overlay {
+  @apply fixed inset-0 z-[100] bg-[#050505] flex flex-col p-6 md:p-12;
+}
+
+.full-screen-textarea {
+  @apply flex-1 bg-transparent border-none text-xl md:text-3xl text-white focus:ring-0 outline-none placeholder:text-white/10 resize-none font-light leading-relaxed;
+}
+
+/* Image Modal */
+.image-modal-overlay {
+  @apply fixed inset-0 z-[110] bg-black/95 backdrop-blur-2xl flex items-center justify-center p-4 md:p-12;
+}
+
+.image-modal-content {
+  @apply relative max-w-full max-h-full flex flex-col items-center gap-6;
+}
+
+.image-modal-img {
+  @apply max-w-full max-h-[80vh] object-contain rounded-2xl shadow-2xl;
+}
+
 .neon-container {
   border: 1px solid rgba(139, 92, 246, 0.2);
   box-shadow: 0 0 30px rgba(0, 0, 0, 1);
+}
+
+.glass-header {
+  @apply bg-black/60 backdrop-blur-xl border-b border-white/5;
+}
+
+@keyframes pulse-glow {
+  0% { box-shadow: 0 0 5px rgba(139, 92, 246, 0.2); }
+  50% { box-shadow: 0 0 20px rgba(139, 92, 246, 0.4); }
+  100% { box-shadow: 0 0 5px rgba(139, 92, 246, 0.2); }
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s infinite;
 }
 
 .neon-glow-violet {

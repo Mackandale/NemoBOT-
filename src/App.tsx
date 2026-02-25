@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import { GoogleGenAI, Modality } from "@google/genai";
 import Markdown from 'react-markdown';
 import { motion, AnimatePresence } from 'motion/react';
-import { ArrowUp, Bot, Sparkles, Phone, Mic, MicOff, X, Volume2, Search, ExternalLink, Plus, Image as ImageIcon, FileText, Lightbulb, Paperclip, Send, Download, RefreshCw, Menu, PlusCircle, History, Settings, LogOut, Trash2, Edit3, MessageSquare, ChevronLeft } from 'lucide-react';
+import { ArrowUp, Bot, Sparkles, Phone, Mic, MicOff, X, Volume2, Search, ExternalLink, Plus, Image as ImageIcon, FileText, Lightbulb, Paperclip, Send, Download, RefreshCw, Menu, PlusCircle, History, Settings, LogOut, Trash2, Edit3, MessageSquare, ChevronLeft, Maximize2, Minimize2, ZoomIn, Copy, Check, Pause, Square, MoreVertical } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
@@ -52,6 +52,14 @@ interface UserProfile {
   lastTopic: string;
 }
 
+const GREETINGS = [
+  "Salut 👋 , Je suis Nemo — la nouvelle intelligence artificielle de Lazarus Lab. Comment je peux t’aider aujourd’hui ?",
+  "Hey 😊 , Qu’est-ce qui t’amène aujourd’hui ?",
+  "👋 Coucou, je suis Nemo. Comment vas-tu aujourd’hui ?",
+  "Bonjour ! Je suis Nemo 🚀. Sur quoi travaillons-nous aujourd'hui ?",
+  "Salut ! Nemo à ton service. Une idée en tête ? 💡"
+];
+
 export default function App() {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
@@ -70,6 +78,7 @@ export default function App() {
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [attachedFile, setAttachedFile] = useState<{ name: string; type: string; data: string; size: number } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   
   const [showSidebar, setShowSidebar] = useState(false);
   const [threads, setThreads] = useState<Thread[]>([]);
@@ -79,6 +88,26 @@ export default function App() {
   const [editTitle, setEditTitle] = useState('');
   
   const [nemoAvatar, setNemoAvatar] = useState<string | null>(null);
+  
+  // New UI States
+  const [isFullScreenInput, setIsFullScreenInput] = useState(false);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [imageZoom, setImageZoom] = useState(1);
+  const [isRecordingVocal, setIsRecordingVocal] = useState(false);
+  const [isVoiceResponseMode, setIsVoiceResponseMode] = useState(false);
+  const [activeTTSMessageId, setActiveTTSMessageId] = useState<string | null>(null);
+  const [isTTSPaused, setIsTTSPaused] = useState(false);
+  const [showRegenMenuId, setShowRegenMenuId] = useState<string | null>(null);
+  const [copiedCodeId, setCopiedCodeId] = useState<string | null>(null);
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+
+  // Auto-resize textarea
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
+    }
+  }, [input]);
 
   const filteredThreads = useMemo(() => {
     return threads.filter(t => 
@@ -91,6 +120,13 @@ export default function App() {
   const recognitionRef = useRef<any>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const callTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 200)}px`;
+    }
+  }, [input]);
 
   useEffect(() => {
     fetchUser();
@@ -168,10 +204,11 @@ export default function App() {
         if (data.length > 0) {
           setMessages(data.map((m: any) => ({ ...m, timestamp: new Date(m.timestamp) })));
         } else {
+          const randomGreeting = GREETINGS[Math.floor(Math.random() * GREETINGS.length)];
           setMessages([{
             id: 'welcome',
             role: 'bot',
-            content: `Nouvelle conversation démarrée. Comment puis-je vous aider aujourd'hui ?`,
+            content: randomGreeting,
             timestamp: new Date(),
           }]);
         }
@@ -198,10 +235,11 @@ export default function App() {
         const newThread = await res.json();
         setThreads(prev => [newThread, ...prev]);
         setCurrentThreadId(newThread.id);
+        const randomGreeting = GREETINGS[Math.floor(Math.random() * GREETINGS.length)];
         setMessages([{
           id: 'welcome',
           role: 'bot',
-          content: `Nouvelle conversation démarrée. Comment puis-je vous aider aujourd'hui ?`,
+          content: randomGreeting,
           timestamp: new Date(),
         }]);
         setShowSidebar(false);
@@ -635,11 +673,73 @@ export default function App() {
     }
   };
 
-  const handleSend = async () => {
-    if ((!input.trim() && !attachedFile) || isLoading) return;
+  const copyToClipboard = (text: string, id: string, type: 'code' | 'message') => {
+    navigator.clipboard.writeText(text).then(() => {
+      if (type === 'code') {
+        setCopiedCodeId(id);
+        setTimeout(() => setCopiedCodeId(null), 2000);
+      } else {
+        setCopiedMessageId(id);
+        setTimeout(() => setCopiedMessageId(null), 2000);
+      }
+    });
+  };
+
+  const handleRegenerate = async (option: 'shorter' | 'longer' | 'normal', messageId: string) => {
+    setShowRegenMenuId(null);
+    const messageIndex = messages.findIndex(m => m.id === messageId);
+    if (messageIndex === -1) return;
+
+    const userMessage = messages[messageIndex - 1];
+    if (!userMessage || userMessage.role !== 'user') return;
+
+    // Remove the bot message and regenerate
+    setMessages(prev => prev.filter(m => m.id !== messageId));
+    
+    let prompt = userMessage.content;
+    if (option === 'shorter') prompt += " (Fais une réponse plus courte)";
+    if (option === 'longer') prompt += " (Fais une réponse plus longue et détaillée)";
+    
+    handleSend(prompt);
+  };
+
+  const handleTTS = (text: string, messageId: string) => {
+    if (activeTTSMessageId === messageId) {
+      if (isTTSPaused) {
+        window.speechSynthesis.resume();
+        setIsTTSPaused(false);
+      } else {
+        window.speechSynthesis.pause();
+        setIsTTSPaused(true);
+      }
+      return;
+    }
+
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'fr-FR';
+    utterance.onend = () => {
+      setActiveTTSMessageId(null);
+      setIsTTSPaused(false);
+    };
+    
+    setActiveTTSMessageId(messageId);
+    setIsTTSPaused(false);
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const stopTTS = () => {
+    window.speechSynthesis.cancel();
+    setActiveTTSMessageId(null);
+    setIsTTSPaused(false);
+  };
+
+  const handleSend = async (overrideInput?: string) => {
+    const textToSend = overrideInput !== undefined ? overrideInput : input;
+    if ((!textToSend.trim() && !attachedFile) || isLoading) return;
 
     triggerHaptic();
-    const rawInput = input.trim();
+    const rawInput = textToSend.trim();
     const currentFile = attachedFile;
 
     // Ensure we have a thread
@@ -678,64 +778,46 @@ export default function App() {
       
       const systemInstruction = `Tu es Nemo Bot, un assistant IA de nouvelle génération conçu par Lazarus Lab. 
         Lazarus Lab est un programme d’apprentissage et de développement axé sur l’intelligence artificielle, la programmation et la création de projets technologiques avancés.
-        Ton objectif est de former des développeurs capables de comprendre, construire et déployer des systèmes intelligents modernes.
         
-        STYLE DE RÉPONSE PREMIUM (OBLIGATOIRE):
-        - Utilise des EMOJIS stratégiques pour structurer les informations.
-        - Utilise des SYMBOLES SPÉCIAUX (📌, ⚡, 💎, 🚀, 🌑) pour organiser les sections.
+        PRINCIPES FONDAMENTAUX:
+        - ADAPTATIVITÉ & FLEXIBILITÉ: Analyse le style de l'utilisateur et adapte automatiquement ton format. Ne force pas de thème ou de format rigide.
+        - NEUTRALITÉ THÉMATIQUE: Ne jamais imposer un sujet. L'utilisateur choisit le thème librement. Suis uniquement le contexte fourni.
+        - NEUTRALITÉ UTILISATEUR: Ne suppose PAS que l'utilisateur est membre de Lazarus Lab. Traite-le comme un utilisateur indépendant, visiteur ou client potentiel par défaut. Ne dis pas "Nous dans Lazarus..." sauf si l'utilisateur confirme explicitement son affiliation (ex: via /verify-mack ou /admin-mode).
+        - CONTEXTUALITÉ: Sois intelligent et non intrusif.
+        
+        STYLE DE RÉPONSE DYNAMIQUE:
+        1. CONVERSATIONS NORMALES / AMICALES:
+           - Si le ton est naturel et informel: réponds avec des messages courts, un ton amical et simple.
+           - Évite les structures lourdes et les tableaux.
+        
+        2. CONVERSATIONS PROFESSIONNELLES / TECHNIQUES:
+           - Si le contexte est technique, analytique ou demande une explication détaillée: utilise une structure organisée avec des étapes et des titres.
+           - RÉGLE DES TABLEAUX: Ne génère un tableau que si l'utilisateur le demande OU si la structure de la réponse l'exige réellement pour la clarté. Évite les tableaux inutiles.
+        
+        FORMATAGE VISUEL (Si approprié au contexte):
+        - Utilise des EMOJIS stratégiques.
+        - Utilise des SYMBOLES SPÉCIAUX (📌, ⚡, 💎, 🚀, 🌑) pour structurer.
         - Utilise des GROS TITRES (Markdown # ou ##) pour les sections principales.
         - Sépare les sections avec des LIGNES HORIZONTALES (Markdown ---).
-        - Utilise des SOUS-TITRES (Markdown ###) pour les détails.
-        - Mets les points importants en GRAS (**texte**).
-        - Utilise l'ITALIQUE (*texte*) pour les nuances ou détails fins.
-        - Crée des TABLEAUX structurés pour comparer des données.
-        - Utilise des LISTES ordonnées pour les processus étape par étape.
-        - Tes réponses doivent être VISUELLEMENT RICHES et FACILES À LIRE.
         
         Vision de Lazarus Lab:
-        - Maîtriser Python, JavaScript et le développement backend.
-        - Construire des intelligences artificielles personnalisées.
-        - Déployer des applications sur le cloud.
-        - Comprendre l’architecture des systèmes modernes.
+        - Maîtriser les technologies modernes (Python, JS, Cloud, IA).
         - Transformer des idées en projets réels.
-        
-        Philosophie:
-        - Apprentissage pratique, construction de projets réels, expérimentation, résolution d’erreurs, autonomie technologique.
-        - La progression vient de la pratique.
-        
-        Ton rôle en tant que Nemo Bot:
-        - Tu es un espace d’apprentissage intégré.
-        - Tu suis la progression de l'utilisateur.
-        - Tu es un assistant technique personnalisé et un environnement d’expérimentation.
-        - Tu accompagnes l’utilisateur dans son évolution technique et enregistres ses progrès.
-        
-        Recherche Web Autonome:
-        - Tu disposes d'un système de recherche web autonome (outil googleSearch).
-        - Tu DOIS effectuer des recherches sur Internet automatiquement si une information externe, technique ou actualisée est nécessaire pour répondre précisément.
-        - Analyse la question, collecte les données pertinentes via l'outil, analyse les résultats et génère une réponse sourcée.
-        
-        Mémoire et Personnalisation:
-        - Tu as accès à la mémoire à long terme de l'utilisateur. Utilise-la pour personnaliser tes conseils.
-        - Si l'utilisateur mentionne un projet, souviens-t'en.
-        - Adapte ton niveau d'explication à son niveau technique actuel.
+        - Apprentissage pratique et autonomie technologique.
         
         ${user ? `
           PROFIL UTILISATEUR:
           - Nom: ${user.name}
           - Niveau: ${user.level}
           - Objectifs: ${user.goals.join(', ')}
-          - Points faibles: ${user.weaknesses.join(', ')}
-          - Points forts: ${user.strengths.join(', ')}
           - Résumé des sessions passées: ${user.conversationSummary}
-          - Dernier sujet abordé: ${user.lastTopic}
           - MÉMOIRE PERSISTANTE: ${user.memoryEntries.join('; ')}
         ` : ''}
         
-        INSTRUCTIONS:
-        - Sois technique mais pédagogique.
+        INSTRUCTIONS FINALES:
+        - Sois technique mais pédagogique quand c'est nécessaire.
         - Encourage l'expérimentation.
-        - Si l'utilisateur fait une erreur, guide-le pour qu'il la trouve lui-même.
-        ${isSearchForced ? "- L'utilisateur a explicitement demandé une recherche web. Utilise l'outil de recherche pour répondre." : ""}`;
+        ${isSearchForced ? "- L'utilisateur a demandé une recherche web. Utilise l'outil de recherche." : ""}`;
 
       // Get last 10 messages for context (Short-term memory)
       const contextMessages = messages.slice(-10).map(m => ({
@@ -778,6 +860,11 @@ export default function App() {
       };
 
       setMessages(prev => [...prev, botMessage]);
+      
+      if (isVoiceResponseMode) {
+        speakResponse(botText);
+      }
+
       if (user) {
         saveMessage('bot', botText, undefined, undefined, response.candidates?.[0]?.groundingMetadata, activeThreadId || undefined);
         // Adaptive Learning: Analyze conversation every 3 user messages
@@ -801,7 +888,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-black text-white flex flex-col relative overflow-hidden font-sans">
+    <div className="h-screen bg-black text-white flex flex-col relative overflow-hidden font-sans">
       {/* Sidebar / Drawer */}
       <AnimatePresence>
         {showSidebar && (
@@ -811,14 +898,14 @@ export default function App() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setShowSidebar(false)}
-              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[70]"
             />
             <motion.div
               initial={{ x: '-100%' }}
               animate={{ x: 0 }}
               exit={{ x: '-100%' }}
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className="fixed top-0 left-0 bottom-0 w-[280px] bg-[#0a0a0c]/90 backdrop-blur-xl border-r border-white/10 z-50 flex flex-col"
+              className="fixed top-0 left-0 bottom-0 w-[280px] bg-[#0a0a0c]/90 backdrop-blur-xl border-r border-white/10 z-[80] flex flex-col"
             >
               <div className="p-6 flex flex-col h-full">
                 <div className="flex items-center justify-between mb-8">
@@ -949,8 +1036,8 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* Main Header (Hamburger only) */}
-      <header className="p-6 flex items-center justify-between z-30">
+      {/* Main Header (Fixed) */}
+      <header className="fixed top-0 left-0 right-0 p-6 flex items-center justify-between z-40 glass-header">
         <button 
           onClick={() => setShowSidebar(true)}
           className="p-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl text-white transition-all active:scale-95"
@@ -964,12 +1051,6 @@ export default function App() {
             className="px-4 py-2 bg-violet-500/10 hover:bg-violet-500/20 border border-violet-500/20 rounded-full text-[10px] font-bold uppercase tracking-widest text-violet-400 transition-all"
           >
             Lazarus Lab
-          </button>
-          <button 
-            onClick={startCall}
-            className="w-12 h-12 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 rounded-2xl flex items-center justify-center text-emerald-400 transition-all active:scale-95 shadow-lg shadow-emerald-500/5"
-          >
-            <Phone className="w-5 h-5" />
           </button>
         </div>
       </header>
@@ -1334,7 +1415,7 @@ export default function App() {
       </AnimatePresence>
 
       {/* Chat Area */}
-      <main className="flex-1 overflow-y-auto px-4 pt-8 pb-32 space-y-6 scrollbar-hide">
+      <main className="flex-1 overflow-y-auto px-4 pt-24 pb-32 space-y-6 scrollbar-hide">
         <div className="max-w-3xl mx-auto w-full">
           {messages.length === 0 && !isAuthLoading && (
           <motion.div 
@@ -1413,12 +1494,28 @@ export default function App() {
                       "mb-6 rounded-3xl overflow-hidden border border-white/10 shadow-2xl relative group/img",
                       message.role === 'user' ? "max-w-[240px]" : "w-full max-w-2xl"
                     )}>
-                      <img src={message.image} alt="Preview" className="w-full h-auto object-cover" />
+                      <img 
+                        src={message.image} 
+                        alt="Preview" 
+                        className="w-full h-auto object-cover cursor-pointer hover:scale-[1.02] transition-transform duration-500" 
+                        onClick={() => setSelectedImage(message.image!)}
+                      />
                       
                       {message.role === 'bot' && (
                         <div className="absolute inset-0 bg-black/60 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center gap-4">
                           <button 
-                            onClick={() => {
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedImage(message.image!);
+                            }}
+                            className="p-4 bg-white/10 hover:bg-white/20 rounded-full text-white transition-all backdrop-blur-md"
+                            title="Agrandir"
+                          >
+                            <Maximize2 className="w-6 h-6" />
+                          </button>
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
                               const link = document.createElement('a');
                               link.href = message.image!;
                               link.download = `nemo-gen-${Date.now()}.png`;
@@ -1428,16 +1525,6 @@ export default function App() {
                             title="Télécharger"
                           >
                             <Download className="w-6 h-6" />
-                          </button>
-                          <button 
-                            onClick={() => {
-                              const prompt = message.content.match(/"(.+)"/)?.[1] || message.content;
-                              generateImage(prompt);
-                            }}
-                            className="p-4 bg-white/10 hover:bg-white/20 rounded-full text-white transition-all backdrop-blur-md"
-                            title="Régénérer"
-                          >
-                            <RefreshCw className="w-6 h-6" />
                           </button>
                         </div>
                       )}
@@ -1456,12 +1543,93 @@ export default function App() {
                     </div>
                   )}
 
-                  <div className={cn(
-                    "max-w-none",
-                    message.role === 'user' ? "prose prose-invert prose-sm" : ""
-                  )}>
-                    <Markdown>{message.content}</Markdown>
+                  <div className="markdown-body">
+                    <Markdown
+                      components={{
+                        pre: ({ children }) => {
+                          const codeString = (children as any)?.props?.children || "";
+                          const codeId = Math.random().toString(36).substr(2, 9);
+                          return (
+                            <div className="code-block-container">
+                              <button 
+                                onClick={() => copyToClipboard(codeString, codeId, 'code')}
+                                className="copy-code-btn"
+                              >
+                                {copiedCodeId === codeId ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                              </button>
+                              <pre>{children}</pre>
+                            </div>
+                          );
+                        }
+                      }}
+                    >
+                      {message.content}
+                    </Markdown>
                   </div>
+
+                  {message.role === 'bot' && (
+                    <div className="message-actions">
+                      <button 
+                        onClick={() => copyToClipboard(message.content, message.id, 'message')}
+                        className="action-btn"
+                        title="Copier le texte"
+                      >
+                        {copiedMessageId === message.id ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                        {copiedMessageId === message.id ? "Copié" : "Copier"}
+                      </button>
+                      
+                      <div className="relative">
+                        <button 
+                          onClick={() => setShowRegenMenuId(showRegenMenuId === message.id ? null : message.id)}
+                          className="action-btn"
+                          title="Régénérer"
+                        >
+                          <RefreshCw className="w-3 h-3" />
+                          Régénérer
+                        </button>
+                        <AnimatePresence>
+                          {showRegenMenuId === message.id && (
+                            <motion.div 
+                              initial={{ opacity: 0, y: 10 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              exit={{ opacity: 0, y: 10 }}
+                              className="regen-menu"
+                            >
+                              <button onClick={() => handleRegenerate('shorter', message.id)} className="regen-item">
+                                <Minimize2 className="w-3 h-3" /> Plus court
+                              </button>
+                              <button onClick={() => handleRegenerate('longer', message.id)} className="regen-item">
+                                <Maximize2 className="w-3 h-3" /> Plus long
+                              </button>
+                              <button onClick={() => handleRegenerate('normal', message.id)} className="regen-item">
+                                <RefreshCw className="w-3 h-3" /> Normal
+                              </button>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+
+                      <button 
+                        onClick={() => handleTTS(message.content, message.id)}
+                        className={cn("action-btn", activeTTSMessageId === message.id && "action-btn-active")}
+                        title="Lire le texte"
+                      >
+                        {activeTTSMessageId === message.id && !isTTSPaused ? <Pause className="w-3 h-3" /> : <Volume2 className="w-3 h-3" />}
+                        {activeTTSMessageId === message.id ? (isTTSPaused ? "Reprendre" : "Pause") : "Lire"}
+                      </button>
+
+                      {activeTTSMessageId === message.id && (
+                        <button 
+                          onClick={stopTTS}
+                          className="action-btn text-red-400 hover:text-red-300"
+                          title="Arrêter"
+                        >
+                          <Square className="w-3 h-3" />
+                          Stop
+                        </button>
+                      )}
+                    </div>
+                  )}
 
                   {message.groundingMetadata?.groundingChunks && (
                     <div className="mt-8 pt-8 border-t border-white/10 space-y-4">
@@ -1559,6 +1727,122 @@ export default function App() {
         </div>
       </main>
 
+      {/* Full Screen Image Modal */}
+      <AnimatePresence>
+        {selectedImage && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="image-modal-overlay"
+            onClick={() => { setSelectedImage(null); setImageZoom(1); }}
+          >
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="image-modal-content"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="relative overflow-hidden rounded-2xl">
+                <motion.img 
+                  animate={{ scale: imageZoom }}
+                  src={selectedImage} 
+                  alt="Full Screen" 
+                  className="image-modal-img cursor-zoom-in" 
+                  onClick={() => setImageZoom(prev => prev === 1 ? 2 : 1)}
+                />
+              </div>
+              <div className="flex gap-4 items-center">
+                <button 
+                  onClick={() => setImageZoom(prev => prev + 0.5)}
+                  className="p-4 bg-white/10 hover:bg-white/20 rounded-full text-white backdrop-blur-md transition-all"
+                  title="Zoom In"
+                >
+                  <ZoomIn className="w-6 h-6" />
+                </button>
+                <button 
+                  onClick={() => {
+                    const link = document.createElement('a');
+                    link.href = selectedImage;
+                    link.download = `nemo-full-${Date.now()}.png`;
+                    link.click();
+                  }}
+                  className="px-6 py-3 bg-white/10 hover:bg-white/20 rounded-full text-white flex items-center gap-2 backdrop-blur-md transition-all"
+                >
+                  <Download className="w-5 h-5" />
+                  Télécharger
+                </button>
+                <button 
+                  onClick={() => { setSelectedImage(null); setImageZoom(1); }}
+                  className="px-6 py-3 bg-violet-500 hover:bg-violet-600 rounded-full text-white flex items-center gap-2 transition-all"
+                >
+                  <X className="w-5 h-5" />
+                  Fermer
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Full Screen Input Mode */}
+      <AnimatePresence>
+        {isFullScreenInput && (
+          <motion.div 
+            initial={{ opacity: 0, y: '100%' }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: '100%' }}
+            className="full-screen-input-overlay"
+          >
+            <div className="flex items-center justify-between mb-8">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-violet-500 flex items-center justify-center">
+                  <Edit3 className="w-6 h-6 text-white" />
+                </div>
+                <h2 className="text-2xl font-bold">Mode Rédaction</h2>
+              </div>
+              <button 
+                onClick={() => setIsFullScreenInput(false)}
+                className="p-3 bg-white/5 hover:bg-white/10 rounded-full transition-all"
+              >
+                <Minimize2 className="w-6 h-6" />
+              </button>
+            </div>
+            
+            <textarea 
+              autoFocus
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="Écrivez votre message ici..."
+              className="full-screen-textarea"
+            />
+            
+            <div className="mt-auto flex items-center justify-between pt-8 border-t border-white/10">
+              <div className="flex items-center gap-4">
+                <button 
+                  onClick={() => setIsVoiceResponseMode(!isVoiceResponseMode)}
+                  className={cn(
+                    "flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold uppercase tracking-widest transition-all",
+                    isVoiceResponseMode ? "bg-violet-500 text-white" : "bg-white/5 text-white/40 hover:bg-white/10"
+                  )}
+                >
+                  <Volume2 className="w-4 h-4" />
+                  Réponse Vocale: {isVoiceResponseMode ? "ON" : "OFF"}
+                </button>
+              </div>
+              <button 
+                onClick={() => { handleSend(); setIsFullScreenInput(false); }}
+                className="px-8 py-4 bg-violet-500 hover:bg-violet-600 rounded-2xl text-white font-bold flex items-center gap-3 transition-all shadow-xl shadow-violet-500/20"
+              >
+                Envoyer le message
+                <ArrowUp className="w-5 h-5" />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Floating Input Bar */}
       <footer className="absolute bottom-0 left-0 right-0 p-6 z-20">
         <div className="max-w-3xl mx-auto w-full relative">
@@ -1568,7 +1852,7 @@ export default function App() {
               initial={{ opacity: 0, y: 20, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 20, scale: 0.95 }}
-              className="absolute bottom-[100px] left-6 right-6 bg-[#0a0a0c]/90 backdrop-blur-xl border border-white/10 rounded-[24px] p-4 shadow-2xl z-30 grid grid-cols-2 gap-3"
+              className="absolute bottom-[80px] left-0 right-0 bg-[#0a0a0c]/95 backdrop-blur-2xl border border-white/10 rounded-[24px] p-4 shadow-2xl z-30 grid grid-cols-2 gap-3"
             >
               <button 
                 onClick={() => {
@@ -1628,11 +1912,11 @@ export default function App() {
         </AnimatePresence>
 
         <div className={cn(
-          "glass-input rounded-[30px] p-2 flex flex-col gap-2 transition-all duration-500 neon-border",
+          "glass-input rounded-[28px] p-1.5 flex flex-col gap-1 transition-all duration-500 neon-border shadow-lg",
           isLoading && "thinking-glow"
         )}>
           {attachedFile && (
-            <div className="px-4 py-2 flex items-center justify-between bg-violet-500/10 rounded-2xl border border-violet-500/20">
+            <div className="px-4 py-2 flex items-center justify-between bg-violet-500/10 rounded-2xl border border-violet-500/20 mb-1">
               <div className="flex items-center gap-2 overflow-hidden">
                 <FileText className="w-4 h-4 text-violet-400" />
                 <span className="text-xs text-violet-200 truncate">{attachedFile.name}</span>
@@ -1643,41 +1927,93 @@ export default function App() {
             </div>
           )}
           
-          <div className="flex items-center gap-2">
-            <motion.button
-              whileTap={{ scale: 0.9 }}
-              onClick={() => setShowPlusMenu(!showPlusMenu)}
-              className={cn(
-                "w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300",
-                showPlusMenu ? "bg-violet-500 text-white rotate-45" : "bg-white/5 text-violet-400 hover:bg-white/10"
+          <div className="flex items-end gap-1 relative">
+            <AnimatePresence>
+              {input.length < 100 && (
+                <motion.button
+                  initial={{ opacity: 0, width: 0 }}
+                  animate={{ opacity: 1, width: 'auto' }}
+                  exit={{ opacity: 0, width: 0 }}
+                  whileTap={{ scale: 0.9 }}
+                  onClick={() => setShowPlusMenu(!showPlusMenu)}
+                  className={cn(
+                    "w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300 flex-shrink-0",
+                    showPlusMenu ? "bg-violet-500 text-white rotate-45" : "bg-white/5 text-white/40 hover:bg-white/10"
+                  )}
+                >
+                  <Paperclip className="w-5 h-5" />
+                </motion.button>
               )}
-            >
-              <Plus className="w-6 h-6" />
-            </motion.button>
+            </AnimatePresence>
 
-            <input
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-              placeholder="Demandez quelque chose à Nemo..."
-              className="flex-1 bg-transparent border-none px-2 py-3 text-[16px] text-white focus:ring-0 outline-none placeholder:text-white/20"
-            />
-            
-            <motion.button
-              whileTap={{ scale: 0.9 }}
-              onClick={handleSend}
-              disabled={(!input.trim() && !attachedFile) || isLoading}
-              className={cn(
-                "w-12 h-12 rounded-full flex items-center justify-center transition-all duration-300",
-                (input.trim() || attachedFile) && !isLoading 
-                  ? "bg-[#8b5cf6] text-white neon-glow-violet" 
-                  : "bg-white/5 text-white/20",
-                !input.trim() && !attachedFile && !isLoading && "animate-pulse-glow"
+            <div className="flex-1 relative flex items-center">
+              <textarea
+                ref={textareaRef}
+                rows={1}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder="Demandez quelque chose à Nemo..."
+                className="w-full bg-transparent border-none px-3 py-2.5 text-[15px] text-white focus:ring-0 outline-none placeholder:text-white/20 resize-none max-h-[200px] scrollbar-hide leading-relaxed"
+              />
+              
+              {input.length > 0 && (
+                <button 
+                  onClick={() => setIsFullScreenInput(true)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 bg-white/5 hover:bg-white/10 rounded-lg text-white/20 hover:text-white/60 transition-all"
+                  title="Plein Écran"
+                >
+                  <Maximize2 className="w-3.5 h-3.5" />
+                </button>
               )}
-            >
-              <ArrowUp className="w-6 h-6" />
-            </motion.button>
+            </div>
+            
+            <div className="flex items-center gap-1.5">
+              <AnimatePresence>
+                {input.length < 100 && (
+                  <motion.button
+                    initial={{ opacity: 0, width: 0 }}
+                    animate={{ opacity: 1, width: 'auto' }}
+                    exit={{ opacity: 0, width: 0 }}
+                    whileTap={{ scale: 0.9 }}
+                    onClick={() => {
+                      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+                      if (SpeechRecognition) {
+                        const recognition = new SpeechRecognition();
+                        recognition.lang = 'fr-FR';
+                        recognition.onstart = () => setIsRecordingVocal(true);
+                        recognition.onend = () => setIsRecordingVocal(false);
+                        recognition.onresult = (event: any) => {
+                          const text = event.results[0][0].transcript;
+                          setInput(text);
+                        };
+                        recognition.start();
+                      }
+                    }}
+                    className={cn(
+                      "w-10 h-10 rounded-full flex items-center justify-center transition-all flex-shrink-0",
+                      isRecordingVocal ? "bg-red-500 text-white animate-pulse" : "bg-white/5 text-white/40 hover:bg-white/10"
+                    )}
+                    title="Vocal"
+                  >
+                    <Mic className="w-5 h-5" />
+                  </motion.button>
+                )}
+              </AnimatePresence>
+
+              <motion.button
+                whileTap={{ scale: 0.9 }}
+                onClick={() => handleSend()}
+                disabled={(!input.trim() && !attachedFile) || isLoading}
+                className={cn(
+                  "w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300 flex-shrink-0",
+                  (input.trim() || attachedFile) && !isLoading 
+                    ? "bg-violet-500 text-white shadow-lg shadow-violet-500/20" 
+                    : "bg-white/5 text-white/10"
+                )}
+              >
+                <ArrowUp className="w-5 h-5" />
+              </motion.button>
+            </div>
           </div>
         </div>
         </div>
