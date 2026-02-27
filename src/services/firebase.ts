@@ -1,46 +1,23 @@
 import { initializeApp } from "firebase/app";
-import { getMessaging, getToken, onMessage } from "firebase/messaging";
+import { getAuth, GoogleAuthProvider } from "firebase/auth";
+import { initializeFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  apiKey: "AIzaSyAOBPl7p_8b_j8ghQs-DC6txiVk4_KX-Ng",
+  authDomain: "nemo-ia.firebaseapp.com",
+  projectId: "nemo-ia",
+  storageBucket: "nemo-ia.firebasestorage.app",
+  messagingSenderId: "80789688035",
+  appId: "1:80789688035:web:093eadb201c22852133fd6",
+  measurementId: "G-P0VSYW5VJN"
 };
 
 const app = initializeApp(firebaseConfig);
-const messaging = typeof window !== 'undefined' ? getMessaging(app) : null;
+export const auth = getAuth(app);
 
-export const requestNotificationPermission = async () => {
-  if (!messaging) return;
-  try {
-    const permission = await Notification.requestPermission();
-    if (permission === 'granted') {
-      const token = await getToken(messaging, {
-        vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY,
-      });
-      console.log('FCM Token:', token);
-      // Send this token to your server to save it for the user
-      if (token) {
-        await fetch('/api/notifications/token', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token }),
-        });
-      }
-      return token;
-    }
-  } catch (error) {
-    console.error('Error requesting notification permission:', error);
-  }
-};
+// Force long polling to avoid WebSocket issues in some environments
+export const db = initializeFirestore(app, {
+  experimentalForceLongPolling: true,
+});
 
-export const onMessageListener = () =>
-  new Promise((resolve) => {
-    if (!messaging) return;
-    onMessage(messaging, (payload) => {
-      resolve(payload);
-    });
-  });
+export const googleProvider = new GoogleAuthProvider();

@@ -1,5 +1,5 @@
 {
-  "name": "Nemo Bot",
-  "description": "Un assistant intelligent inspiré de l'interface iOS, propulsé par Gemini.",
+  "name": "Nemo",
+  "description": "L'intelligence artificielle de Lazarus Lab. Un collaborateur intelligent et membre à part entière de l'équipe.",
   "requestFramePermissions": ["microphone"]
 }

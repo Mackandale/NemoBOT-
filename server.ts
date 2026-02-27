@@ -1,6 +1,5 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
-import { OAuth2Client } from "google-auth-library";
 import cookieSession from "cookie-session";
 import dotenv from "dotenv";
 import path from "path";
@@ -8,16 +7,23 @@ import admin from "firebase-admin";
 
 dotenv.config();
 
-const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
-const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
-
 // Initialize Firebase Admin
 if (!admin.apps.length && process.env.FIREBASE_PROJECT_ID) {
   try {
+    let privateKey = process.env.FIREBASE_PRIVATE_KEY;
+    if (privateKey) {
+      // Handle literal newlines and escaped newlines
+      privateKey = privateKey.replace(/\\n/g, '\n');
+      // Remove any surrounding quotes that might have been pasted
+      if (privateKey.startsWith('"') && privateKey.endsWith('"')) {
+        privateKey = privateKey.substring(1, privateKey.length - 1);
+      }
+    }
+
     admin.initializeApp({
       credential: admin.credential.cert({
         projectId: process.env.FIREBASE_PROJECT_ID,
-        privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+        privateKey: privateKey,
         clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
       }),
     });
@@ -31,22 +37,6 @@ const db = admin.apps.length ? admin.firestore() : null;
 const app = express();
 const PORT = 3000;
 
-const client = new OAuth2Client(
-  GOOGLE_CLIENT_ID,
-  GOOGLE_CLIENT_SECRET
-);
-
-const getRedirectUri = (req: express.Request) => {
-  // Always prioritize APP_URL environment variable
-  const appUrl = process.env.APP_URL?.replace(/\/$/, "");
-  if (appUrl) return `${appUrl}/auth/callback`;
-  
-  // Fallback for local development
-  const protocol = req.headers["x-forwarded-proto"] || req.protocol;
-  const host = req.headers["x-forwarded-host"] || req.get("host");
-  return `${protocol}://${host}/auth/callback`;
-};
-
 app.use(express.json());
 app.use(
   cookieSession({
@@ -59,89 +49,33 @@ app.use(
 );
 
 // Auth Routes
-app.get("/api/auth/url", (req, res) => {
-  const redirectUri = getRedirectUri(req);
-  const url = client.generateAuthUrl({
-    access_type: "offline",
-    scope: ["https://www.googleapis.com/auth/userinfo.profile", "https://www.googleapis.com/auth/userinfo.email"],
-    redirect_uri: redirectUri,
-  });
-  res.json({ url });
-});
+app.post("/api/login/firebase", async (req, res) => {
+  const { token } = req.body;
+  if (!token) return res.status(400).json({ error: "Token required" });
 
-app.get(["/auth/callback", "/auth/callback/"], async (req, res) => {
-  const { code } = req.query;
-  const redirectUri = getRedirectUri(req);
-  
   try {
-    const { tokens } = await client.getToken({
-      code: code as string,
-      redirect_uri: redirectUri,
-    });
+    const decodedToken = await admin.auth().verifyIdToken(token);
+    req.session!.userId = decodedToken.uid;
     
-    const ticket = await client.verifyIdToken({
-      idToken: tokens.id_token!,
-      audience: GOOGLE_CLIENT_ID,
-    });
-    
-    const payload = ticket.getPayload();
-    if (!payload) throw new Error("No payload");
-
-    const userId = payload.sub;
-    const email = payload.email;
-    const name = payload.name;
-    const picture = payload.picture;
-
+    // Ensure user exists in Firestore (server-side check/init)
     if (db) {
-      const userRef = db.collection("users").doc(userId);
-      const doc = await userRef.get();
-      
-      if (!doc.exists) {
+      const userRef = db.collection("users").doc(decodedToken.uid);
+      const userDoc = await userRef.get();
+      if (!userDoc.exists) {
         await userRef.set({
-          id: userId,
-          email,
-          name,
-          picture,
-          level: "Beginner",
-          goals: [],
-          weaknesses: [],
-          strengths: [],
-          history: [],
-          progress: 0,
-          learningStyle: "Visual",
-          streak: 0,
-          lastActive: admin.firestore.FieldValue.serverTimestamp(),
-          memoryEntries: [],
-          conversationSummary: "",
-          lastTopic: ""
-        });
-      } else {
-        await userRef.update({
-          lastActive: admin.firestore.FieldValue.serverTimestamp()
+          id: decodedToken.uid,
+          email: decodedToken.email || "",
+          name: decodedToken.name || "Utilisateur",
+          picture: decodedToken.picture || "",
+          createdAt: admin.firestore.FieldValue.serverTimestamp()
         });
       }
     }
 
-    req.session!.userId = userId;
-
-    res.send(`
-      <html>
-        <body>
-          <script>
-            if (window.opener) {
-              window.opener.postMessage({ type: 'OAUTH_AUTH_SUCCESS' }, '*');
-              window.close();
-            } else {
-              window.location.href = '/';
-            }
-          </script>
-          <p>Authentication successful. This window should close automatically.</p>
-        </body>
-      </html>
-    `);
+    res.json({ success: true });
   } catch (error) {
-    console.error("Auth error:", error);
-    res.status(500).send("Authentication failed");
+    console.error("Firebase token verification error:", error);
+    res.status(401).json({ error: "Invalid token" });
   }
 });
 
@@ -168,7 +102,7 @@ app.post("/api/profile/analyze", async (req, res) => {
   if (!req.session?.userId) return res.status(401).json({ error: "Not authenticated" });
   if (!db) return res.status(500).json({ error: "Database not initialized" });
 
-  const { analysis, message } = req.body;
+  const { analysis } = req.body;
   const userRef = db.collection("users").doc(req.session.userId);
   
   try {
@@ -178,25 +112,11 @@ app.post("/api/profile/analyze", async (req, res) => {
       if (!user) return;
 
       const updates: any = {
-        lastActive: admin.firestore.FieldValue.serverTimestamp(),
-        streak: (user.streak || 0) + 1
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
       };
 
       if (analysis.level) updates.level = analysis.level;
-      if (analysis.weaknesses) updates.weaknesses = Array.from(new Set([...(user.weaknesses || []), ...analysis.weaknesses]));
-      if (analysis.strengths) updates.strengths = Array.from(new Set([...(user.strengths || []), ...analysis.strengths]));
-      if (analysis.goals) updates.goals = Array.from(new Set([...(user.goals || []), ...analysis.goals]));
-      if (analysis.progress) updates.progress = Math.min(100, (user.progress || 0) + analysis.progress);
-      
-      if (analysis.resetMemory) {
-        updates.memoryEntries = [];
-        updates.conversationSummary = "";
-        updates.lastTopic = "";
-      } else {
-        if (analysis.memoryEntry) updates.memoryEntries = admin.firestore.FieldValue.arrayUnion(analysis.memoryEntry);
-        if (analysis.summary) updates.conversationSummary = analysis.summary;
-        if (analysis.topic) updates.lastTopic = analysis.topic;
-      }
+      if (analysis.memoryEntry) updates.memoryEntries = admin.firestore.FieldValue.arrayUnion(analysis.memoryEntry);
 
       t.update(userRef, updates);
     });
