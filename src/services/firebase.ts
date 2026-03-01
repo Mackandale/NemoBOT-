@@ -1,6 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
-import { initializeFirestore } from "firebase/firestore";
+import { initializeFirestore, enableIndexedDbPersistence } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: "AIzaSyAOBPl7p_8b_j8ghQs-DC6txiVk4_KX-Ng",
@@ -18,6 +18,17 @@ export const auth = getAuth(app);
 // Force long polling to avoid WebSocket issues in some environments
 export const db = initializeFirestore(app, {
   experimentalForceLongPolling: true,
+});
+
+// Enable persistence for offline-first architecture
+enableIndexedDbPersistence(db).catch((err) => {
+  if (err.code === 'failed-precondition') {
+    // Multiple tabs open, persistence can only be enabled in one tab at a a time.
+    console.warn('Firestore persistence failed: multiple tabs open');
+  } else if (err.code === 'unimplemented') {
+    // The current browser does not support all of the features required to enable persistence
+    console.warn('Firestore persistence failed: browser not supported');
+  }
 });
 
 export const googleProvider = new GoogleAuthProvider();
