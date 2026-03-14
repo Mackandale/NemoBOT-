@@ -21,39 +21,15 @@ const initializeFirebase = () => {
   }
 
   try {
-    // 1. Initial cleanup
-    privateKey = privateKey.trim();
-
-    // 2. Handle the case where the entire service account JSON might have been pasted
-    if (privateKey.startsWith('{')) {
-      try {
-        const serviceAccount = JSON.parse(privateKey);
-        if (serviceAccount.private_key) {
-          privateKey = serviceAccount.private_key;
-        }
-      } catch (e) {
-        // Not valid JSON, proceed
-      }
-    }
-
-    // 3. Remove any surrounding quotes
-    privateKey = privateKey.replace(/^["']|["']$/g, '');
-    
-    // 4. Handle escaped newlines (both \n and \\n)
+    // Handle literal newlines and escaped newlines
     privateKey = privateKey.replace(/\\n/g, '\n');
-
-    // 5. Aggressive PEM normalization
-    // Remove existing headers and all whitespace to get the raw base64
-    const rawKey = privateKey
-      .replace(/-----BEGIN [A-Z ]+-----/g, '')
-      .replace(/-----END [A-Z ]+-----/g, '')
-      .replace(/\s+/g, '');
+    // Remove any surrounding quotes (single or double) and trim whitespace
+    privateKey = privateKey.trim().replace(/^["']|["']$/g, '');
     
-    // Wrap the raw base64 string at 64 characters per line (standard PEM format)
-    const wrappedKey = rawKey.match(/.{1,64}/g)?.join('\n') || rawKey;
-    
-    // Reconstruct the PEM string with proper headers and newlines
-    privateKey = `-----BEGIN PRIVATE KEY-----\n${wrappedKey}\n-----END PRIVATE KEY-----\n`;
+    // Ensure the private key has the correct PEM headers if they are missing
+    if (!privateKey.includes('-----BEGIN PRIVATE KEY-----')) {
+      privateKey = `-----BEGIN PRIVATE KEY-----\n${privateKey}\n-----END PRIVATE KEY-----`;
+    }
 
     admin.initializeApp({
       credential: admin.credential.cert({
@@ -117,19 +93,7 @@ app.post("/api/login/firebase", async (req, res) => {
           email: decodedToken.email || "",
           name: decodedToken.name || "Utilisateur",
           picture: decodedToken.picture || "",
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
-          userSettings: {
-            voice: 'Kore',
-            personality: 'Mentor',
-            theme: 'dark',
-            autoMemory: true
-          },
-          progression: {
-            xp: 0,
-            level: 1,
-            activityScore: 0,
-            milestones: []
-          }
+          createdAt: admin.firestore.FieldValue.serverTimestamp()
         });
       }
     }
@@ -138,22 +102,6 @@ app.post("/api/login/firebase", async (req, res) => {
   } catch (error) {
     console.error("Firebase token verification error:", error);
     res.status(401).json({ error: "Invalid token" });
-  }
-});
-
-app.patch("/api/settings", async (req, res) => {
-  if (!req.session?.userId) return res.status(401).json({ error: "Not authenticated" });
-  const db = getDb();
-  if (!db) return res.status(500).json({ error: "Database not initialized" });
-
-  try {
-    await db.collection("users").doc(req.session.userId).update({
-      userSettings: req.body,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
-    });
-    res.json({ success: true });
-  } catch (error) {
-    res.status(500).json({ error: "Error updating settings" });
   }
 });
 
@@ -209,188 +157,189 @@ app.post("/api/profile/analyze", async (req, res) => {
   }
 });
 
-// Conversation Routes (New System)
-app.get("/api/conversations", async (req, res) => {
+// Thread Routes
+app.get("/api/threads", async (req, res) => {
   if (!req.session?.userId) return res.status(401).json({ error: "Not authenticated" });
   const db = getDb();
   if (!db) return res.status(500).json({ error: "Database not initialized" });
 
   try {
-    const snapshot = await db.collection("conversations")
-      .where("ownerUid", "==", req.session.userId)
+    const snapshot = await db.collection("users").doc(req.session.userId)
+      .collection("threads")
       .orderBy("updatedAt", "desc")
       .get();
     
-    const conversations = snapshot.docs.map(doc => ({
+    const threads = snapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data(),
       updatedAt: doc.data().updatedAt?.toDate() || new Date(),
       createdAt: doc.data().createdAt?.toDate() || new Date()
     }));
-    res.json(conversations);
+    res.json(threads);
   } catch (error) {
-    console.error("Error fetching conversations:", error);
-    res.status(500).json({ error: "Error fetching conversations" });
+    res.status(500).json({ error: "Error fetching threads" });
   }
 });
 
-app.post("/api/conversations", async (req, res) => {
+app.post("/api/threads", async (req, res) => {
   if (!req.session?.userId) return res.status(401).json({ error: "Not authenticated" });
   const db = getDb();
   if (!db) return res.status(500).json({ error: "Database not initialized" });
 
-  const { title, messages } = req.body;
+  const { title } = req.body;
   try {
-    const convRef = await db.collection("conversations").add({
-      ownerUid: req.session.userId,
-      title: title || "Nouvelle conversation",
-      summary: "",
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      messages: messages || []
-    });
-    res.json({ id: convRef.id });
+    const threadRef = await db.collection("users").doc(req.session.userId)
+      .collection("threads")
+      .add({
+        title: title || "Nouvelle conversation",
+        lastMessage: "",
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+    res.json({ id: threadRef.id, title: title || "Nouvelle conversation" });
   } catch (error) {
-    res.status(500).json({ error: "Error creating conversation" });
+    res.status(500).json({ error: "Error creating thread" });
   }
 });
 
-app.get("/api/conversations/:id", async (req, res) => {
+app.patch("/api/threads/:threadId", async (req, res) => {
   if (!req.session?.userId) return res.status(401).json({ error: "Not authenticated" });
   const db = getDb();
   if (!db) return res.status(500).json({ error: "Database not initialized" });
 
+  const { threadId } = req.params;
+  const { title } = req.body;
   try {
-    const doc = await db.collection("conversations").doc(req.params.id).get();
-    if (!doc.exists) return res.status(404).json({ error: "Conversation not found" });
-    const data = doc.data();
-    if (data?.ownerUid !== req.session.userId) return res.status(403).json({ error: "Unauthorized" });
+    await db.collection("users").doc(req.session.userId)
+      .collection("threads")
+      .doc(threadId)
+      .update({ title, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: "Error updating thread" });
+  }
+});
+
+app.delete("/api/threads/:threadId", async (req, res) => {
+  if (!req.session?.userId) return res.status(401).json({ error: "Not authenticated" });
+  const db = getDb();
+  if (!db) return res.status(500).json({ error: "Database not initialized" });
+
+  const { threadId } = req.params;
+  try {
+    const threadRef = db.collection("users").doc(req.session.userId).collection("threads").doc(threadId);
     
-    res.json({
+    // Delete messages in thread
+    const messages = await threadRef.collection("messages").get();
+    const batch = db.batch();
+    messages.forEach(doc => batch.delete(doc.ref));
+    batch.delete(threadRef);
+    await batch.commit();
+    
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: "Error deleting thread" });
+  }
+});
+
+app.get("/api/threads/:threadId/messages", async (req, res) => {
+  if (!req.session?.userId) return res.status(401).json({ error: "Not authenticated" });
+  const db = getDb();
+  if (!db) return res.status(500).json({ error: "Database not initialized" });
+
+  const { threadId } = req.params;
+  try {
+    const snapshot = await db.collection("users").doc(req.session.userId)
+      .collection("threads")
+      .doc(threadId)
+      .collection("messages")
+      .orderBy("timestamp", "asc")
+      .get();
+    
+    const messages = snapshot.docs.map(doc => ({
       id: doc.id,
-      ...data,
-      updatedAt: data?.updatedAt?.toDate() || new Date(),
-      createdAt: data?.createdAt?.toDate() || new Date()
-    });
+      ...doc.data(),
+      timestamp: doc.data().timestamp?.toDate() || new Date()
+    }));
+    res.json(messages);
   } catch (error) {
-    res.status(500).json({ error: "Error fetching conversation" });
+    res.status(500).json({ error: "Error fetching messages" });
   }
 });
 
-app.patch("/api/conversations/:id", async (req, res) => {
+app.post("/api/threads/:threadId/messages", async (req, res) => {
   if (!req.session?.userId) return res.status(401).json({ error: "Not authenticated" });
   const db = getDb();
   if (!db) return res.status(500).json({ error: "Database not initialized" });
 
+  const { threadId } = req.params;
+  const { role, content, image, file, groundingMetadata } = req.body;
   try {
-    const convRef = db.collection("conversations").doc(req.params.id);
-    const doc = await convRef.get();
-    if (!doc.exists) return res.status(404).json({ error: "Conversation not found" });
-    if (doc.data()?.ownerUid !== req.session.userId) return res.status(403).json({ error: "Unauthorized" });
-
-    const updates = {
-      ...req.body,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
-    };
+    const threadRef = db.collection("users").doc(req.session.userId).collection("threads").doc(threadId);
     
-    await convRef.update(updates);
-    res.json({ success: true });
-  } catch (error) {
-    res.status(500).json({ error: "Error updating conversation" });
-  }
-});
+    const msgData: any = {
+      role,
+      content,
+      timestamp: admin.firestore.FieldValue.serverTimestamp()
+    };
+    if (image) msgData.image = image;
+    if (file) msgData.file = file;
+    if (groundingMetadata) msgData.groundingMetadata = groundingMetadata;
 
-app.delete("/api/conversations/:id", async (req, res) => {
-  if (!req.session?.userId) return res.status(401).json({ error: "Not authenticated" });
-  const db = getDb();
-  if (!db) return res.status(500).json({ error: "Database not initialized" });
-
-  try {
-    const convRef = db.collection("conversations").doc(req.params.id);
-    const doc = await convRef.get();
-    if (!doc.exists) return res.status(404).json({ error: "Conversation not found" });
-    if (doc.data()?.ownerUid !== req.session.userId) return res.status(403).json({ error: "Unauthorized" });
-
-    await convRef.delete();
-    res.json({ success: true });
-  } catch (error) {
-    res.status(500).json({ error: "Error deleting conversation" });
-  }
-});
-
-// Memory Routes
-app.get("/api/memories", async (req, res) => {
-  if (!req.session?.userId) return res.status(401).json({ error: "Not authenticated" });
-  const db = getDb();
-  if (!db) return res.status(500).json({ error: "Database not initialized" });
-
-  try {
-    const snapshot = await db.collection("users").doc(req.session.userId).collection("memories").orderBy("createdAt", "desc").get();
-    const memories = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    res.json(memories);
-  } catch (error) {
-    res.status(500).json({ error: "Error fetching memories" });
-  }
-});
-
-app.post("/api/memories", async (req, res) => {
-  if (!req.session?.userId) return res.status(401).json({ error: "Not authenticated" });
-  const db = getDb();
-  if (!db) return res.status(500).json({ error: "Database not initialized" });
-
-  try {
-    const memRef = await db.collection("users").doc(req.session.userId).collection("memories").add({
-      ...req.body,
-      createdAt: admin.firestore.FieldValue.serverTimestamp()
-    });
-    res.json({ id: memRef.id });
-  } catch (error) {
-    res.status(500).json({ error: "Error saving memory" });
-  }
-});
-
-app.delete("/api/memories/:id", async (req, res) => {
-  if (!req.session?.userId) return res.status(401).json({ error: "Not authenticated" });
-  const db = getDb();
-  if (!db) return res.status(500).json({ error: "Database not initialized" });
-
-  try {
-    await db.collection("users").doc(req.session.userId).collection("memories").doc(req.params.id).delete();
-    res.json({ success: true });
-  } catch (error) {
-    res.status(500).json({ error: "Error deleting memory" });
-  }
-});
-
-// Project Routes
-app.get("/api/projects", async (req, res) => {
-  if (!req.session?.userId) return res.status(401).json({ error: "Not authenticated" });
-  const db = getDb();
-  if (!db) return res.status(500).json({ error: "Database not initialized" });
-
-  try {
-    const snapshot = await db.collection("users").doc(req.session.userId).collection("projects").orderBy("updatedAt", "desc").get();
-    const projects = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    res.json(projects);
-  } catch (error) {
-    res.status(500).json({ error: "Error fetching projects" });
-  }
-});
-
-app.post("/api/projects", async (req, res) => {
-  if (!req.session?.userId) return res.status(401).json({ error: "Not authenticated" });
-  const db = getDb();
-  if (!db) return res.status(500).json({ error: "Database not initialized" });
-
-  try {
-    const projRef = await db.collection("users").doc(req.session.userId).collection("projects").add({
-      ...req.body,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    const msgRef = await threadRef.collection("messages").add(msgData);
+    
+    // Update thread last message and timestamp
+    await threadRef.update({
+      lastMessage: content.substring(0, 100),
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     });
-    res.json({ id: projRef.id });
+
+    res.json({ id: msgRef.id });
   } catch (error) {
-    res.status(500).json({ error: "Error saving project" });
+    res.status(500).json({ error: "Error saving message" });
+  }
+});
+
+app.get("/api/messages", async (req, res) => {
+  if (!req.session?.userId) return res.status(401).json({ error: "Not authenticated" });
+  const db = getDb();
+  if (!db) return res.status(500).json({ error: "Database not initialized" });
+
+  try {
+    const snapshot = await db.collection("users").doc(req.session.userId)
+      .collection("messages")
+      .orderBy("timestamp", "asc")
+      .limit(50)
+      .get();
+    
+    const messages = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+      timestamp: doc.data().timestamp?.toDate() || new Date()
+    }));
+    res.json(messages);
+  } catch (error) {
+    res.status(500).json({ error: "Error fetching messages" });
+  }
+});
+
+app.post("/api/messages", async (req, res) => {
+  if (!req.session?.userId) return res.status(401).json({ error: "Not authenticated" });
+  const db = getDb();
+  if (!db) return res.status(500).json({ error: "Database not initialized" });
+
+  const { role, content } = req.body;
+  try {
+    const msgRef = await db.collection("users").doc(req.session.userId)
+      .collection("messages")
+      .add({
+        role,
+        content,
+        timestamp: admin.firestore.FieldValue.serverTimestamp()
+      });
+    res.json({ id: msgRef.id });
+  } catch (error) {
+    res.status(500).json({ error: "Error saving message" });
   }
 });
 

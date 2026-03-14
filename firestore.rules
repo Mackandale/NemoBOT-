@@ -1,0 +1,109 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: conversations
+    // Fields: ownerUid, title, summary, createdAt, updatedAt
+    //
+    // Collection: conversations/{id}/messages
+    // Fields: role, content, timestamp, important, favorite
+    //
+    // Collection: users
+    // Fields: id, email, name, level, registrationDate, settings
+    //
+    // Collection: users/{uid}/memories
+    // Fields: content, category, createdAt, priorityLevel
+    //
+    // Collection: users/{uid}/progression
+    // Fields: xp, level, activityScore, milestones, badges
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        ('email' in request.auth.token) &&
+        (request.auth.token.email in ["mackandaledardayes@gmail.com", "lazaruslab404@gmail.com", "mackandalesidibe052@gmail.com"]) && 
+        (request.auth.token.email_verified == true);
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isConversationOwner(conversationId) {
+      return isAuthenticated() && (get(/databases/$(database)/documents/conversations/$(conversationId)).data.ownerUid == request.auth.uid || isAdmin());
+    }
+
+    function isValidMessage(data) {
+      return data.role in ['user', 'bot'] &&
+             data.content is string &&
+             data.content.size() < 10000 &&
+             data.timestamp is timestamp;
+    }
+
+    function isValidConversation(data) {
+      return data.ownerUid == request.auth.uid &&
+             data.title is string &&
+             data.title.size() < 200;
+    }
+
+    function isValidMemory(data) {
+      return data.content is string &&
+             data.content.size() < 2000 &&
+             data.category is string &&
+             data.priorityLevel in ['low', 'medium', 'high'];
+    }
+
+    function isValidProgression(data) {
+      return data.xp is number &&
+             data.level is number &&
+             data.activityScore is number &&
+             data.milestones is list &&
+             data.badges is list;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow get: if isOwner(userId) || isAdmin();
+      allow list: if isAdmin();
+      allow create: if isOwner(userId) || isAdmin();
+      allow update: if isOwner(userId) || isAdmin();
+      allow delete: if isAdmin();
+
+      match /memories/{memoryId} {
+        allow read: if isOwner(userId) || isAdmin();
+        allow write: if (isOwner(userId) || isAdmin()) && (request.method == 'DELETE' || isValidMemory(request.resource.data));
+      }
+
+      match /progression/{docId} {
+        allow read: if isOwner(userId) || isAdmin();
+        allow write: if (isOwner(userId) || isAdmin()) && isValidProgression(request.resource.data);
+      }
+    }
+
+    match /conversations/{conversationId} {
+      allow read, delete: if (isAuthenticated() && resource.data.ownerUid == request.auth.uid) || isAdmin();
+      allow create: if isAuthenticated() && isValidConversation(request.resource.data);
+      allow update: if ((isAuthenticated() && resource.data.ownerUid == request.auth.uid) || isAdmin()) && isValidConversation(request.resource.data);
+
+      match /messages/{messageId} {
+        allow read: if isConversationOwner(conversationId) || isAdmin();
+        allow create, update: if (isConversationOwner(conversationId) || isAdmin()) && isValidMessage(request.resource.data);
+        allow delete: if isConversationOwner(conversationId) || isAdmin();
+      }
+    }
+  }
+}
