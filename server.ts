@@ -26,9 +26,29 @@ const initializeFirebase = () => {
     // Remove any surrounding quotes (single or double) and trim whitespace
     privateKey = privateKey.trim().replace(/^["']|["']$/g, '');
     
-    // Ensure the private key has the correct PEM headers if they are missing
+    // Ensure the private key has the correct PEM headers and formatting
     if (!privateKey.includes('-----BEGIN PRIVATE KEY-----')) {
+      // If it's just the base64 string, wrap it
       privateKey = `-----BEGIN PRIVATE KEY-----\n${privateKey}\n-----END PRIVATE KEY-----`;
+    } else {
+      // If it has headers, ensure there's a newline after the header and before the footer
+      privateKey = privateKey.replace('-----BEGIN PRIVATE KEY-----', '-----BEGIN PRIVATE KEY-----\n');
+      privateKey = privateKey.replace('-----END PRIVATE KEY-----', '\n-----END PRIVATE KEY-----');
+    }
+    
+    // Remove any double newlines and ensure the key is properly formatted
+    privateKey = privateKey.replace(/\n\n+/g, '\n');
+    
+    // If the key content itself has spaces, it might be invalid
+    // But we should only remove spaces within the base64 block, not the headers
+    const parts = privateKey.split('\n');
+    if (parts.length > 2) {
+      const header = parts[0];
+      const footer = parts[parts.length - 1];
+      const content = parts.slice(1, -1).join('').replace(/\s+/g, '');
+      // Re-format content with newlines every 64 characters (standard PEM)
+      const formattedContent = content.match(/.{1,64}/g)?.join('\n') || content;
+      privateKey = `${header}\n${formattedContent}\n${footer}`;
     }
 
     admin.initializeApp({

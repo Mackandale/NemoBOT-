@@ -7,7 +7,7 @@ import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { auth, db, googleProvider } from './services/firebase';
 import { signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
-import { doc, setDoc, getDoc, getDocFromServer, serverTimestamp, enableNetwork, collection, query, orderBy, onSnapshot, addDoc, updateDoc, deleteDoc, getDocs, writeBatch, where, collectionGroup, increment, arrayUnion } from 'firebase/firestore';
+import { doc, setDoc, getDoc, getDocFromServer, serverTimestamp, enableNetwork, collection, query, orderBy, onSnapshot, addDoc, updateDoc, deleteDoc, getDocs, writeBatch, where, collectionGroup } from 'firebase/firestore';
 
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { atomDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
@@ -86,144 +86,6 @@ const SECRET_MODES: Record<string, { token: string; instruction: string; label: 
   }
 };
 
-enum OperationType {
-  CREATE = 'create',
-  UPDATE = 'update',
-  DELETE = 'delete',
-  LIST = 'list',
-  GET = 'get',
-  WRITE = 'write',
-}
-
-interface FirestoreErrorInfo {
-  error: string;
-  operationType: OperationType;
-  path: string | null;
-  authInfo: {
-    userId?: string;
-    email?: string;
-    emailVerified?: boolean;
-    isAnonymous?: boolean;
-    tenantId?: string | null;
-    providerInfo: {
-      providerId: string;
-      displayName: string | null;
-      email: string | null;
-      photoUrl: string | null;
-    }[];
-  }
-}
-
-function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
-  const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
-    authInfo: {
-      userId: auth.currentUser?.uid,
-      email: auth.currentUser?.email || undefined,
-      emailVerified: auth.currentUser?.emailVerified,
-      isAnonymous: auth.currentUser?.isAnonymous,
-      tenantId: auth.currentUser?.tenantId,
-      providerInfo: auth.currentUser?.providerData.map(provider => ({
-        providerId: provider.providerId,
-        displayName: provider.displayName,
-        email: provider.email,
-        photoUrl: provider.photoURL
-      })) || []
-    },
-    operationType,
-    path
-  };
-  
-  if (errInfo.error.includes('Missing or insufficient permissions')) {
-    console.error('Firestore Permission Error: ', JSON.stringify(errInfo, null, 2));
-  } else {
-    console.error('Firestore Error: ', error);
-  }
-  
-  throw new Error(JSON.stringify(errInfo));
-}
-
-const ConfirmationModal = ({ 
-  isOpen, 
-  onClose, 
-  onConfirm, 
-  title, 
-  message, 
-  confirmText = "Confirmer", 
-  cancelText = "Annuler",
-  isDestructive = false
-}: { 
-  isOpen: boolean, 
-  onClose: () => void, 
-  onConfirm: () => void, 
-  title: string, 
-  message: string, 
-  confirmText?: string, 
-  cancelText?: string,
-  isDestructive?: boolean
-}) => {
-  if (!isOpen) return null;
-
-  return (
-    <motion.div 
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[300] bg-black/80 backdrop-blur-md flex items-center justify-center p-4"
-      onClick={onClose}
-    >
-      <motion.div 
-        initial={{ scale: 0.9, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.9, opacity: 0 }}
-        className="w-full max-w-sm bg-[#1a1a1e] border border-white/10 rounded-[32px] p-8 space-y-6"
-        onClick={e => e.stopPropagation()}
-      >
-        <div className="space-y-2">
-          <h3 className="text-xl font-bold text-white">{title}</h3>
-          <p className="text-sm text-white/60 leading-relaxed">{message}</p>
-        </div>
-        <div className="flex gap-3">
-          <button 
-            onClick={onClose}
-            className="flex-1 py-3 rounded-2xl bg-white/5 text-white font-bold hover:bg-white/10 transition-all"
-          >
-            {cancelText}
-          </button>
-          <button 
-            onClick={() => { onConfirm(); onClose(); }}
-            className={cn(
-              "flex-1 py-3 rounded-2xl font-bold text-white transition-all",
-              isDestructive ? "bg-red-500 hover:bg-red-600" : "bg-violet-500 hover:bg-violet-600"
-            )}
-          >
-            {confirmText}
-          </button>
-        </div>
-      </motion.div>
-    </motion.div>
-  );
-};
-
-const Toast = ({ message, type, onClose }: { message: string, type: 'error' | 'success' | 'info', onClose: () => void }) => (
-  <motion.div
-    initial={{ opacity: 0, y: 50, x: '-50%' }}
-    animate={{ opacity: 1, y: 0, x: '-50%' }}
-    exit={{ opacity: 0, y: 50, x: '-50%' }}
-    className={cn(
-      "fixed bottom-24 left-1/2 z-[500] px-6 py-3 rounded-2xl border shadow-2xl flex items-center gap-3 min-w-[300px]",
-      type === 'error' ? "bg-red-500/10 border-red-500/20 text-red-400" :
-      type === 'success' ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" :
-      "bg-violet-500/10 border-violet-500/20 text-violet-400"
-    )}
-  >
-    {type === 'error' ? <X className="w-5 h-5" /> : type === 'success' ? <Check className="w-5 h-5" /> : <Bot className="w-5 h-5" />}
-    <p className="text-sm font-bold">{message}</p>
-    <button onClick={onClose} className="ml-auto p-1 hover:bg-white/10 rounded-lg">
-      <X className="w-4 h-4" />
-    </button>
-  </motion.div>
-);
 const TypingIndicator = () => (
   <div className="flex items-center gap-1 px-4 py-2 bg-white/5 rounded-2xl w-fit border border-white/5">
     <motion.div
@@ -287,126 +149,7 @@ const WelcomeScreen = ({ userName, onSuggestion }: { userName: string, onSuggest
   </motion.div>
 );
 
-const MemoryManagementModal = ({ 
-  isOpen, 
-  onClose, 
-  memories, 
-  onDeleteMemory 
-}: { 
-  isOpen: boolean, 
-  onClose: () => void, 
-  memories: Memory[], 
-  onDeleteMemory: (id: string) => void 
-}) => {
-  if (!isOpen) return null;
-
-  return (
-    <motion.div 
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[110] bg-black/90 backdrop-blur-2xl flex items-center justify-center p-4"
-      onClick={onClose}
-    >
-      <motion.div 
-        initial={{ scale: 0.9, opacity: 0, y: 20 }}
-        animate={{ scale: 1, opacity: 1, y: 0 }}
-        exit={{ scale: 0.9, opacity: 0, y: 20 }}
-        className="w-full max-w-2xl bg-[#0f0f12] border border-white/10 rounded-[40px] overflow-hidden shadow-2xl flex flex-col max-h-[85vh]"
-        onClick={e => e.stopPropagation()}
-      >
-        <div className="p-8 border-b border-white/5 flex items-center justify-between bg-white/5">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 flex items-center justify-center text-emerald-400">
-              <Sparkles className="w-6 h-6" />
-            </div>
-            <div>
-              <h2 className="text-xl font-bold text-white">Mémoire de Nemo</h2>
-              <p className="text-xs text-white/40">Ce que Nemo a appris sur vous</p>
-            </div>
-          </div>
-          <button onClick={onClose} className="p-3 hover:bg-white/10 rounded-full text-white/40 hover:text-white transition-all">
-            <X className="w-6 h-6" />
-          </button>
-        </div>
-
-        <div className="p-8 overflow-y-auto flex-1 space-y-4">
-          {memories?.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 text-center space-y-4">
-              <div className="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center text-white/20">
-                <History className="w-8 h-8" />
-              </div>
-              <p className="text-white/40 text-sm max-w-[200px]">Nemo n'a pas encore enregistré de souvenirs importants.</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {memories.map((memory) => (
-                <motion.div 
-                  key={memory.id}
-                  layout
-                  className="p-5 bg-white/5 border border-white/10 rounded-3xl group relative hover:border-emerald-500/30 transition-all"
-                >
-                  <div className="flex items-start justify-between mb-3">
-                    <span className={cn(
-                      "px-2 py-1 rounded-lg text-[8px] font-black uppercase tracking-widest",
-                      memory.category === 'Projet' ? "bg-blue-500/20 text-blue-400" :
-                      memory.category === 'Objectif' ? "bg-purple-500/20 text-purple-400" :
-                      memory.category === 'Préférence' ? "bg-emerald-500/20 text-emerald-400" :
-                      "bg-white/10 text-white/40"
-                    )}>
-                      {memory.category}
-                    </span>
-                    <button 
-                      onClick={() => onDeleteMemory(memory.id)}
-                      className="p-2 opacity-0 group-hover:opacity-100 hover:bg-red-500/20 hover:text-red-400 rounded-xl transition-all text-white/20"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                  <p className="text-sm text-white/80 leading-relaxed mb-4">{memory.content}</p>
-                  <div className="flex items-center justify-between text-[10px] text-white/20 font-medium">
-                    <span>{memory.createdAt.toLocaleDateString('fr-FR')}</span>
-                    <div className="flex items-center gap-1">
-                      <Zap className={cn("w-3 h-3", 
-                        memory.priorityLevel === 'high' ? "text-red-400 fill-red-400" :
-                        memory.priorityLevel === 'medium' ? "text-yellow-400 fill-yellow-400" :
-                        "text-white/20"
-                      )} />
-                      <span className="uppercase tracking-widest">{memory.priorityLevel}</span>
-                    </div>
-                  </div>
-                </motion.div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div className="p-8 bg-white/5 border-t border-white/5 flex items-center justify-between">
-          <p className="text-[10px] text-white/20 font-medium uppercase tracking-widest">
-            {memories?.length || 0} souvenirs enregistrés
-          </p>
-          <p className="text-[10px] text-white/20 font-medium uppercase tracking-widest italic">
-            La suppression est irréversible
-          </p>
-        </div>
-      </motion.div>
-    </motion.div>
-  );
-};
-
-const SettingsModal = ({ 
-  isOpen, 
-  onClose, 
-  user, 
-  onUpdateSettings,
-  setShowMemoryManagement 
-}: { 
-  isOpen: boolean, 
-  onClose: () => void, 
-  user: UserProfile | null, 
-  onUpdateSettings: (settings: any) => void,
-  setShowMemoryManagement: (show: boolean) => void
-}) => {
+const SettingsModal = ({ isOpen, onClose, user, onUpdateSettings }: { isOpen: boolean, onClose: () => void, user: UserProfile | null, onUpdateSettings: (settings: any) => void }) => {
   if (!isOpen || !user) return null;
 
   return (
@@ -436,7 +179,7 @@ const SettingsModal = ({
           </button>
         </div>
 
-        <div className="p-8 space-y-8 overflow-y-auto max-h-[70vh]">
+        <div className="p-8 space-y-8">
           <section className="space-y-4">
             <div className="flex items-center gap-2 text-violet-400">
               <Volume2 className="w-4 h-4" />
@@ -457,40 +200,6 @@ const SettingsModal = ({
           </section>
 
           <section className="space-y-4">
-            <div className="flex items-center gap-2 text-emerald-400">
-              <Sparkles className="w-4 h-4" />
-              <h3 className="text-xs font-black uppercase tracking-widest">Mémoire Intelligente</h3>
-            </div>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between p-4 bg-white/5 border border-white/10 rounded-2xl">
-                <div className="flex flex-col">
-                  <span className="text-sm text-white/80 font-medium">Mémoire Automatique</span>
-                  <span className="text-[10px] text-white/40">Nemo apprend de vos échanges</span>
-                </div>
-                <button 
-                  onClick={() => onUpdateSettings({ autoMemory: !user.settings?.autoMemory })}
-                  className={cn(
-                    "w-12 h-6 rounded-full relative transition-all duration-300 p-1",
-                    user.settings?.autoMemory ? "bg-emerald-600" : "bg-white/10"
-                  )}
-                >
-                  <motion.div 
-                    animate={{ x: user.settings?.autoMemory ? 24 : 0 }}
-                    className="w-4 h-4 bg-white rounded-full shadow-sm" 
-                  />
-                </button>
-              </div>
-              <button 
-                onClick={() => setShowMemoryManagement(true)}
-                className="w-full p-4 bg-white/5 border border-white/10 rounded-2xl text-sm text-white font-medium hover:bg-white/10 transition-all flex items-center justify-between"
-              >
-                <span>Gérer mes souvenirs</span>
-                <ChevronLeft className="w-4 h-4 rotate-180 opacity-40" />
-              </button>
-            </div>
-          </section>
-
-          <section className="space-y-4">
             <div className="flex items-center gap-2 text-blue-400">
               <Sun className="w-4 h-4" />
               <h3 className="text-xs font-black uppercase tracking-widest">Apparence</h3>
@@ -498,7 +207,7 @@ const SettingsModal = ({
             <div className="flex items-center justify-between p-4 bg-white/5 border border-white/10 rounded-2xl">
               <span className="text-sm text-white/80 font-medium">Mode Sombre</span>
               <div className="w-12 h-6 bg-violet-600 rounded-full relative p-1">
-                <div className="w-4 h-4 bg-white rounded-full shadow-sm translate-x-6" />
+                <div className="w-4 h-4 bg-white rounded-full shadow-sm" />
               </div>
             </div>
           </section>
@@ -685,7 +394,7 @@ const ImageModal = ({
               </div>
               <div>
                 <h2 className="text-2xl font-bold text-white tracking-tight">Messages Favoris</h2>
-                <p className="text-sm text-white/40 font-medium">{favorites?.length || 0} messages enregistrés</p>
+                <p className="text-sm text-white/40 font-medium">{favorites.length} messages enregistrés</p>
               </div>
             </div>
             <button onClick={onClose} className="p-3 hover:bg-white/5 rounded-full text-white/40 hover:text-white transition-all">
@@ -694,7 +403,7 @@ const ImageModal = ({
           </div>
           
           <div className="flex-1 overflow-y-auto p-8 space-y-6 scrollbar-hide">
-            {(favorites?.length || 0) === 0 ? (
+            {favorites.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-20 text-center gap-4">
                 <div className="w-20 h-20 rounded-full bg-white/5 flex items-center justify-center text-white/10">
                   <Star className="w-10 h-10" />
@@ -741,7 +450,7 @@ const ImageModal = ({
     );
   };
 
-const ProgressionDashboard = ({ isOpen, onClose, profile, progression }: { isOpen: boolean, onClose: () => void, profile: UserProfile | null, progression: Progression }) => {
+const ProgressionDashboard = ({ isOpen, onClose, profile }: { isOpen: boolean, onClose: () => void, profile: UserProfile | null }) => {
   if (!isOpen || !profile) return null;
   
   const isMack = MACK_EMAILS.includes(profile.email || '');
@@ -753,33 +462,33 @@ const ProgressionDashboard = ({ isOpen, onClose, profile, progression }: { isOpe
     xp: 999999,
     level: 999,
     badges: ["Admin", "Alpha", "Creator", "Legend", "Mack's Right Hand"]
-  } : {
-    messagesSent: progression.activityScore,
+  } : profile.stats || {
+    messagesSent: 0,
     imagesGenerated: 0,
-    activeTimeMinutes: progression.activityScore * 2,
-    xp: progression.xp,
-    level: progression.level,
-    badges: progression.badges
+    activeTimeMinutes: 0,
+    xp: 0,
+    level: 1,
+    badges: []
   };
 
-  const currentProgression = isMack ? {
+  const progression = isMack ? {
     xp: 999999,
     level: 999,
     score_engagement: 100,
     motivation_score: 100,
     skill_score: 100,
     curiosity_score: 100
-  } : {
-    xp: progression.xp,
-    level: progression.level,
-    score_engagement: Math.min(100, (progression.activityScore / 50) * 100),
-    motivation_score: 85,
-    skill_score: 70,
-    curiosity_score: 90
+  } : profile.progression || {
+    xp: 0,
+    level: 1,
+    score_engagement: 0,
+    motivation_score: 0,
+    skill_score: 0,
+    curiosity_score: 0
   };
 
-  const xpToNextLevel = 100 * Math.pow(currentProgression.level, 1.5);
-  const progressPercent = (currentProgression.xp / xpToNextLevel) * 100;
+  const xpToNextLevel = 100 * Math.pow(progression.level, 1.5);
+  const progressPercent = (progression.xp / xpToNextLevel) * 100;
 
   const activityData = [
     { name: 'Lun', xp: 12 },
@@ -857,7 +566,7 @@ const ProgressionDashboard = ({ isOpen, onClose, profile, progression }: { isOpe
               { label: 'Messages', value: stats.messagesSent, icon: MessageSquare, color: 'text-blue-400', bg: 'bg-blue-400/10' },
               { label: 'Images', value: stats.imagesGenerated, icon: ImageIcon, color: 'text-emerald-400', bg: 'bg-emerald-400/10' },
               { label: 'Temps Actif', value: `${stats.activeTimeMinutes}m`, icon: Zap, color: 'text-yellow-400', bg: 'bg-yellow-400/10' },
-              { label: 'Engagement', value: `${currentProgression.score_engagement}%`, icon: Heart, color: 'text-rose-400', bg: 'bg-rose-400/10' },
+              { label: 'Engagement', value: `${progression.score_engagement}%`, icon: Heart, color: 'text-rose-400', bg: 'bg-rose-400/10' },
             ].map((stat, i) => (
               <div key={i} className="bg-white/5 border border-white/10 rounded-3xl p-6 flex flex-col items-center text-center hover:border-white/20 transition-all group">
                 <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform", stat.bg, stat.color)}>
@@ -896,7 +605,7 @@ const ProgressionDashboard = ({ isOpen, onClose, profile, progression }: { isOpe
           <div className="space-y-6">
             <h4 className="text-xs font-black uppercase tracking-[0.2em] text-white/40">Badges & Succès</h4>
             <div className="flex flex-wrap gap-4">
-              {(stats.badges?.length || 0) > 0 ? stats.badges.map((badge, i) => (
+              {stats.badges.length > 0 ? stats.badges.map((badge, i) => (
                 <div key={i} className="px-6 py-3 bg-violet-500/10 border border-violet-500/20 rounded-2xl flex items-center gap-3 group hover:bg-violet-500/20 transition-all">
                   <Star className="w-4 h-4 text-yellow-400 fill-yellow-400 group-hover:scale-125 transition-transform" />
                   <span className="text-xs font-bold uppercase tracking-widest text-white">{badge}</span>
@@ -940,7 +649,7 @@ interface Message {
   id: string;
   role: 'user' | 'bot';
   content: string;
-  timestamp: any;
+  timestamp: Date;
   groundingMetadata?: any;
   image?: string;
   images?: string[];
@@ -970,28 +679,8 @@ interface Thread {
   title: string;
   summary?: string;
   lastMessage: string;
-  updatedAt: any;
-  createdAt: any;
-}
-
-interface Memory {
-  id: string;
-  content: string;
-  category: string;
-  createdAt: any;
-  priorityLevel: 'low' | 'medium' | 'high';
-}
-
-interface Progression {
-  xp: number;
-  level: number;
-  activityScore: number;
-  milestones: string[];
-  badges: string[];
-  engagementScore?: number;
-  motivationScore?: number;
-  skillScore?: number;
-  curiosityScore?: number;
+  updatedAt: Date;
+  createdAt: Date;
 }
 
 interface UserProfile {
@@ -1000,26 +689,39 @@ interface UserProfile {
   name: string;
   picture: string;
   photoURL?: string;
-  registrationDate?: any;
+  level: string;
+  goals: string[];
+  weaknesses: string[];
+  strengths: string[];
+  progress: number;
+  learningStyle: string;
+  streak: number;
+  memoryEntries: string[];
+  conversationSummary: string;
+  lastTopic: string;
+  registrationDate?: Date;
+  firstMessages?: string[];
+  firstProject?: string;
+  evolutionTimeline?: { date: Date; event: string; type: string }[];
   settings?: {
     voice: string;
-    autoMemory: boolean;
   };
-  // Legacy fields for UI compatibility (to be refactored)
-  level?: string;
-  goals?: string[];
-  weaknesses?: string[];
-  strengths?: string[];
-  progress?: number;
-  learningStyle?: string;
-  streak?: number;
-  memoryEntries?: string[];
-  conversationSummary?: string;
-  lastTopic?: string;
-  evolutionTimeline?: { date: any; event: string; type: string }[];
-  role?: string;
-  stats?: any;
-  progression?: any;
+  stats?: {
+    messagesSent: number;
+    imagesGenerated: number;
+    activeTimeMinutes: number;
+    xp: number;
+    level: number;
+    badges: string[];
+  };
+  progression?: {
+    xp: number;
+    level: number;
+    score_engagement: number;
+    motivation_score: number;
+    skill_score: number;
+    curiosity_score: number;
+  };
 }
 
 const AVAILABLE_VOICES = [
@@ -1068,14 +770,6 @@ export default function App() {
   const [isTyping, setIsTyping] = useState(false);
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [selectedVoice, setSelectedVoice] = useState<SpeechSynthesisVoice | null>(null);
-  const [memories, setMemories] = useState<Memory[]>([]);
-  const [progression, setProgression] = useState<Progression>({
-    xp: 0,
-    level: 1,
-    activityScore: 0,
-    milestones: [],
-    badges: []
-  });
 
   useEffect(() => {
     const loadVoices = () => {
@@ -1128,24 +822,9 @@ export default function App() {
   const [showRegenMenuId, setShowRegenMenuId] = useState<string | null>(null);
   const [copiedCodeId, setCopiedCodeId] = useState<string | null>(null);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [showResetMemoryConfirm, setShowResetMemoryConfirm] = useState(false);
-  const [showDeleteThreadConfirm, setShowDeleteThreadConfirm] = useState<string | null>(null);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editInput, setEditInput] = useState('');
   const [isTTSLoading, setIsTTSLoading] = useState(false);
-  const [toast, setToast] = useState<{ message: string; type: 'error' | 'success' | 'info' } | null>(null);
-
-  useEffect(() => {
-    if (toast) {
-      const timer = setTimeout(() => setToast(null), 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [toast]);
-
-  const showToast = (message: string, type: 'error' | 'success' | 'info' = 'info') => {
-    setToast({ message, type });
-  };
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -1224,7 +903,7 @@ export default function App() {
     if (!user || !currentThreadId) return;
     
     try {
-      const messageRef = doc(db, 'conversations', currentThreadId, 'messages', message.id);
+      const messageRef = doc(db, 'users', user.id, 'threads', currentThreadId, 'messages', message.id);
       const newFavoriteStatus = !message.favorite;
       
       await updateDoc(messageRef, { favorite: newFavoriteStatus });
@@ -1233,7 +912,7 @@ export default function App() {
         m.id === message.id ? { ...m, favorite: newFavoriteStatus } : m
       ));
     } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, `conversations/${currentThreadId}/messages/${message.id}`);
+      console.error("Toggle favorite error:", err);
     }
   };
 
@@ -1250,12 +929,12 @@ export default function App() {
         })) as Message[];
         setFavoriteMessages(favorites);
       }, (err) => {
-        handleFirestoreError(err, OperationType.LIST, 'messages (favorites)');
+        console.warn("Favorites listener error (likely missing index):", err);
       });
       
       return unsubscribe;
     } catch (err) {
-      handleFirestoreError(err, OperationType.LIST, 'messages (favorites)');
+      console.error("Favorites setup error:", err);
     }
   }, [user]);
 
@@ -1277,7 +956,7 @@ export default function App() {
       await updateDoc(userDocRef, { settings: updatedSettings });
       setUser(prev => prev ? { ...prev, settings: updatedSettings } : null);
     } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, `users/${user.id}`);
+      console.error("Update settings error:", err);
     }
   };
 
@@ -1285,11 +964,11 @@ export default function App() {
     // Removed legacy fetchUser
   };
 
-  const fetchThreads = (uid: string) => {
-    if (!uid) return () => {};
+  const fetchThreads = () => {
+    if (!user) return () => {};
     
-    const threadsRef = collection(db, 'conversations');
-    const q = query(threadsRef, where('ownerUid', '==', uid), orderBy('updatedAt', 'desc'));
+    const threadsRef = collection(db, 'users', user.id, 'threads');
+    const q = query(threadsRef, orderBy('updatedAt', 'desc'));
     
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const threadsData = snapshot.docs.map(doc => ({
@@ -1300,7 +979,7 @@ export default function App() {
       })) as Thread[];
       setThreads(threadsData);
     }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'conversations');
+      console.error("Threads listener error (non-critical):", error);
     });
     
     return unsubscribe;
@@ -1313,7 +992,7 @@ export default function App() {
     setIsLoading(true);
     
     try {
-      const messagesRef = collection(db, 'conversations', threadId, 'messages');
+      const messagesRef = collection(db, 'users', user.id, 'threads', threadId, 'messages');
       const q = query(messagesRef, orderBy('timestamp', 'asc'));
       
       const snapshot = await getDocs(q);
@@ -1327,7 +1006,7 @@ export default function App() {
         setMessages(data);
       }
     } catch (err) {
-      handleFirestoreError(err, OperationType.GET, `conversations/${threadId}/messages`);
+      console.error("Switch thread error:", err);
     } finally {
       setIsLoading(false);
       setShowSidebar(false);
@@ -1337,9 +1016,8 @@ export default function App() {
   const createNewThread = async () => {
     if (!user) return;
     try {
-      const threadsRef = collection(db, 'conversations');
+      const threadsRef = collection(db, 'users', user.id, 'threads');
       const newThreadRef = await addDoc(threadsRef, {
-        ownerUid: user.id,
         title: "Nouvelle conversation",
         lastMessage: "",
         createdAt: serverTimestamp(),
@@ -1350,22 +1028,16 @@ export default function App() {
       setMessages([]);
       setShowSidebar(false);
     } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, 'conversations');
+      console.error("Create thread error:", err);
     }
   };
 
   const deleteThread = async (e: React.MouseEvent, threadId: string) => {
     e.stopPropagation();
-    if (!user) return;
-    setShowDeleteThreadConfirm(threadId);
-  };
-
-  const confirmDeleteThread = async () => {
-    if (!user || !showDeleteThreadConfirm) return;
-    const threadId = showDeleteThreadConfirm;
+    if (!user || !confirm("Supprimer cette conversation ?")) return;
     try {
-      const threadRef = doc(db, 'conversations', threadId);
-      const messagesRef = collection(db, 'conversations', threadId, 'messages');
+      const threadRef = doc(db, 'users', user.id, 'threads', threadId);
+      const messagesRef = collection(db, 'users', user.id, 'threads', threadId, 'messages');
       
       const snapshot = await getDocs(messagesRef);
       const batch = writeBatch(db);
@@ -1377,24 +1049,22 @@ export default function App() {
         setCurrentThreadId(null);
         setMessages([]);
       }
-      showToast("Conversation supprimée.", 'success');
     } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, `conversations/${threadId}`);
-      showToast("Erreur lors de la suppression.", 'error');
+      console.error("Delete thread error:", err);
     }
   };
 
   const renameThread = async (threadId: string, newTitle: string) => {
     if (!user) return;
     try {
-      const threadRef = doc(db, 'conversations', threadId);
+      const threadRef = doc(db, 'users', user.id, 'threads', threadId);
       await updateDoc(threadRef, {
         title: newTitle,
         updatedAt: serverTimestamp()
       });
       setIsEditingThread(null);
     } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, `conversations/${threadId}`);
+      console.error("Rename thread error:", err);
     }
   };
 
@@ -1403,8 +1073,8 @@ export default function App() {
     if (!targetThreadId || !user) return;
     
     try {
-      const messagesRef = collection(db, 'conversations', targetThreadId, 'messages');
-      const threadRef = doc(db, 'conversations', targetThreadId);
+      const messagesRef = collection(db, 'users', user.id, 'threads', targetThreadId, 'messages');
+      const threadRef = doc(db, 'users', user.id, 'threads', targetThreadId);
       
       const msgData: any = {
         role,
@@ -1424,7 +1094,7 @@ export default function App() {
         updatedAt: serverTimestamp()
       });
     } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, `conversations/${targetThreadId}/messages`);
+      console.error("Save message error (non-critical):", err);
     }
   };
 
@@ -1441,14 +1111,18 @@ export default function App() {
           name: firebaseUser.displayName || 'Utilisateur',
           picture: firebaseUser.photoURL || '',
           photoURL: firebaseUser.photoURL || '',
-          registrationDate: new Date(),
-          role: 'user',
+          level: 'Débutant',
+          goals: [],
+          weaknesses: [],
+          strengths: [],
+          progress: 0,
+          learningStyle: 'Visuel',
+          streak: 0,
           memoryEntries: [],
-          evolutionTimeline: [],
-          settings: {
-            voice: 'Kore',
-            autoMemory: true
-          }
+          conversationSummary: '',
+          lastTopic: '',
+          registrationDate: new Date(),
+          evolutionTimeline: [{ date: new Date(), event: "Inscription", type: "system" }]
         };
         setUser(basicUserData);
 
@@ -1462,65 +1136,33 @@ export default function App() {
 
           // Fetch or create user profile in Firestore
           const userDocRef = doc(db, 'users', firebaseUser.uid);
+          
           let userDoc;
-          try {
-            userDoc = await getDoc(userDocRef);
-          } catch (e) {
-            handleFirestoreError(e, OperationType.GET, `users/${firebaseUser.uid}`);
+          let retries = 2;
+          while (retries > 0) {
+            try {
+              // Try server first, then cache if server fails
+              userDoc = await getDocFromServer(userDocRef).catch(() => getDoc(userDocRef));
+              break;
+            } catch (e: any) {
+              console.warn(`Firestore fetch attempt failed (${retries} retries left):`, e);
+              retries--;
+              if (retries > 0) await new Promise(resolve => setTimeout(resolve, 2000));
+            }
           }
 
           if (userDoc && userDoc.exists()) {
             const userData = userDoc.data() as UserProfile;
             setUser(prev => ({ ...prev, ...userData }));
-          } else {
-            try {
-              await setDoc(userDocRef, {
-                ...basicUserData,
-                createdAt: serverTimestamp(),
-                registrationDate: serverTimestamp(),
-              });
-            } catch (e) {
-              handleFirestoreError(e, OperationType.WRITE, `users/${firebaseUser.uid}`);
-            }
+          } else if (userDoc) {
+            // Create new user if doc doesn't exist
+            await setDoc(userDocRef, {
+              ...basicUserData,
+              createdAt: serverTimestamp(),
+              registrationDate: serverTimestamp(),
+            });
           }
           
-          // Setup listeners
-          if (threadsUnsubscribe) threadsUnsubscribe();
-          threadsUnsubscribe = fetchThreads(firebaseUser.uid);
-
-          // Memories listener
-          const memoriesRef = collection(db, 'users', firebaseUser.uid, 'memories');
-          const memoriesQuery = query(memoriesRef, orderBy('createdAt', 'desc'));
-          const memUnsub = onSnapshot(memoriesQuery, (snapshot) => {
-            const mems = snapshot.docs.map(doc => ({
-              id: doc.id,
-              ...doc.data(),
-              createdAt: doc.data().createdAt?.toDate() || new Date()
-            })) as Memory[];
-            setMemories(mems);
-          }, (error) => {
-            handleFirestoreError(error, OperationType.LIST, `users/${firebaseUser.uid}/memories`);
-          });
-
-          // Progression listener
-          const progRef = doc(db, 'users', firebaseUser.uid, 'progression', 'stats');
-          const progUnsub = onSnapshot(progRef, (docSnap) => {
-            if (docSnap.exists()) {
-              setProgression(docSnap.data() as Progression);
-            } else {
-              // Initialize progression if not exists
-              setDoc(progRef, {
-                xp: 0,
-                level: 1,
-                activityScore: 0,
-                milestones: [],
-                badges: []
-              }).catch(e => handleFirestoreError(e, OperationType.WRITE, `users/${firebaseUser.uid}/progression/stats`));
-            }
-          }, (error) => {
-            handleFirestoreError(error, OperationType.GET, `users/${firebaseUser.uid}/progression/stats`);
-          });
-
           // Sync with backend session
           const token = await firebaseUser.getIdToken();
           await fetch('/api/login/firebase', {
@@ -1529,12 +1171,12 @@ export default function App() {
             body: JSON.stringify({ token })
           });
 
-          return () => {
-            memUnsub();
-            progUnsub();
-          };
+          // Setup threads listener
+          if (threadsUnsubscribe) threadsUnsubscribe();
+          threadsUnsubscribe = fetchThreads();
         } catch (error) {
           console.error("Non-critical error during profile sync:", error);
+          // We don't throw here because basicUserData is already set
         }
       } else {
         setUser(null);
@@ -1558,8 +1200,8 @@ export default function App() {
     try {
       await signInWithPopup(auth, googleProvider);
     } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, 'auth/login');
-      showToast("Erreur lors de la connexion avec Google.", 'error');
+      console.error("Login error:", error);
+      alert("Erreur lors de la connexion avec Google.");
     } finally {
       setIsLoginLoading(false);
     }
@@ -1582,18 +1224,10 @@ export default function App() {
   };
 
   const handleDeleteAccount = async () => {
-    setShowDeleteConfirm(true);
-  };
-
-  const confirmDeleteAccount = async () => {
-    try {
+    if (confirm("Êtes-vous sûr de vouloir supprimer votre compte ? Cette action est irréversible.")) {
       await fetch('/api/account', { method: 'DELETE' });
       setUser(null);
       setShowProfile(false);
-      showToast("Compte supprimé avec succès.", 'success');
-    } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, 'account');
-      showToast("Erreur lors de la suppression du compte.", 'error');
     }
   };
   
@@ -1609,73 +1243,29 @@ export default function App() {
     }
   };
 
-  const deleteMemory = async (id: string) => {
-    if (!user) return;
-    try {
-      const memoryRef = doc(db, 'users', user.id, 'memories', id);
-      await deleteDoc(memoryRef);
-    } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, `users/${user.id}/memories/${id}`);
-    }
-  };
-
-  const resetMemory = async () => {
-    if (!user) return;
-    setShowResetMemoryConfirm(true);
-  };
-
-  const confirmResetMemory = async () => {
-    if (!user) return;
-    try {
-      const res = await fetch('/api/profile/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          analysis: { 
-            memoryEntries: [], 
-            conversationSummary: "", 
-            lastTopic: "",
-            resetMemory: true 
-          } 
-        })
-      });
-      if (res.ok) {
-        setUser(await res.json());
-        setShowMemoryManagement(false);
-        showToast("Mémoire réinitialisée.", 'success');
-      }
-    } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, 'profile/analyze');
-      showToast("Erreur lors de la réinitialisation.", 'error');
-    }
-  };
-
   const analyzeProgress = async (userText: string, botText: string) => {
-    if (!user || !user.settings?.autoMemory) return;
-    
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
         contents: [{ 
           role: "user", 
-          parts: [{ text: `Analyse cette conversation pour extraire des informations de mémoire à long terme et mettre à jour la progression.
+          parts: [{ text: `Analyse cette conversation pour extraire des informations de mémoire à long terme.
             User: ${userText}
             Bot: ${botText}
             
-            Objectif: Identifier des informations IMPORTANTES (projets, préférences, objectifs, faits personnels) et évaluer l'engagement.
+            Objectif: Identifier les noms, intérêts, compétences, projets, objectifs, faiblesses et préférences.
             
             Retourne un JSON avec ce format:
             { 
-              "importantMemory": {
-                "content": "L'information clé à retenir",
-                "category": "Projet|Préférence|Objectif|Personnel",
-                "priority": "low|medium|high"
-              },
-              "progressionUpdate": {
-                "xpGain": 10, // XP gagné pour cette interaction (5-50)
-                "milestone": "Optionnel: Nouveau jalon atteint"
-              }
+              "level": "Beginner|Intermediate|Advanced", 
+              "weaknesses": ["nouveau point faible identifié"], 
+              "strengths": ["nouveau point fort identifié"], 
+              "progress": 2, // incrément de progression (0-5)
+              "memoryEntry": "Une information clé à retenir (ex: 'L'utilisateur travaille sur un projet de robotique')",
+              "summary": "Résumé mis à jour de la session",
+              "topic": "Sujet technique actuel",
+              "goals": ["nouvel objectif détecté"]
             }` 
           }] 
         }],
@@ -1683,37 +1273,14 @@ export default function App() {
       });
 
       const analysis = JSON.parse(response.text || "{}");
-      
-      // 1. Save Important Memory if detected
-      if (analysis.importantMemory && analysis.importantMemory.content) {
-        const memoriesRef = collection(db, 'users', user.id, 'memories');
-        await addDoc(memoriesRef, {
-          content: analysis.importantMemory.content,
-          category: analysis.importantMemory.category || 'Général',
-          priorityLevel: analysis.importantMemory.priority || 'low',
-          createdAt: serverTimestamp()
-        });
-      }
-
-      // 2. Update Progression
-      if (analysis.progressionUpdate) {
-        const progRef = doc(db, 'users', user.id, 'progression', 'stats');
-        const xpGain = analysis.progressionUpdate.xpGain || 5;
-        
-        const newXp = progression.xp + xpGain;
-        const newLevel = Math.floor(newXp / 1000) + 1;
-        
-        const updates: any = {
-          xp: newXp,
-          level: newLevel,
-          activityScore: increment(1)
-        };
-
-        if (analysis.progressionUpdate.milestone) {
-          updates.milestones = arrayUnion(analysis.progressionUpdate.milestone);
-        }
-
-        await updateDoc(progRef, updates);
+      const res = await fetch('/api/profile/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ analysis })
+      });
+      if (res.ok) {
+        const updatedUser = await res.json();
+        setUser(updatedUser);
       }
     } catch (err) {
       console.error("Analysis error:", err);
@@ -1770,7 +1337,7 @@ export default function App() {
 
       recognition.onresult = (event: any) => {
         let interimTranscript = '';
-        for (let i = event.resultIndex; i < (event.results?.length || 0); ++i) {
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
           if (event.results[i].isFinal) {
             const finalTranscript = event.results[i][0].transcript;
             handleVoiceInput(finalTranscript);
@@ -1911,9 +1478,8 @@ export default function App() {
     if (!user) return null;
     
     try {
-      const threadsRef = collection(db, 'conversations');
+      const threadsRef = collection(db, 'users', user.id, 'threads');
       const newThreadRef = await addDoc(threadsRef, {
-        ownerUid: user.id,
         title: initialTitle || "Nouvelle conversation",
         lastMessage: "",
         createdAt: serverTimestamp(),
@@ -1923,7 +1489,7 @@ export default function App() {
       setCurrentThreadId(newThreadRef.id);
       return newThreadRef.id;
     } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, 'conversations');
+      console.error("Auto-create thread error:", err);
     }
     return null;
   };
@@ -2172,7 +1738,7 @@ export default function App() {
         });
       } else {
         copyToClipboard(message.content, message.id, 'message');
-        showToast("Lien de partage copié (votre navigateur ne supporte pas le partage natif)", 'success');
+        alert("Lien de partage copié (votre navigateur ne supporte pas le partage natif)");
       }
     } catch (err) {
       // Ignore AbortError (user cancelled)
@@ -2332,10 +1898,9 @@ export default function App() {
 
         MÉMOIRE HIÉRARCHISÉE (CONTEXTE VIVANT):
         1. MÉMOIRE COURTE (Conversation actuelle): Analyse les messages récents pour maintenir la cohérence.
-        2. MÉMOIRE MOYENNE (Projet actif): Identifie si l'utilisateur travaille sur un projet spécifique.
-        3. MÉMOIRE LONGUE (Profil utilisateur): Niveau ${progression.level}, XP ${progression.xp}.
-        4. MÉMOIRE STRATÉGIQUE (Faits importants): 
-           ${memories.slice(0, 10).map(m => `- [${m.category}] ${m.content}`).join('\n')}
+        2. MÉMOIRE MOYENNE (Projet actif): Identifie si l'utilisateur travaille sur un projet spécifique (ex: ${user?.lastTopic || 'aucun'}).
+        3. MÉMOIRE LONGUE (Profil utilisateur): Utilise les informations du profil (${user?.level}, ${user?.learningStyle}).
+        4. MÉMOIRE STRATÉGIQUE (Objectifs profonds): Aligne tes réponses avec les objectifs de l'utilisateur (${user?.goals?.join(', ') || 'non définis'}).
         
         RÈGLE DE MÉMOIRE: Relis et intègre ces mémoires avant chaque réponse pour paraître plus intelligente et personnalisée. Nemo est une IA féminine.
         
@@ -2404,9 +1969,10 @@ export default function App() {
         systemInstruction += `
           PROFIL UTILISATEUR:
           - Nom: ${user.name}
-          - Niveau: ${progression.level}
-          - XP: ${progression.xp}
-          - Jalons: ${progression.milestones.join(', ')}`;
+          - Niveau: ${user.level}
+          - Objectifs: ${user.goals.join(', ')}
+          - Résumé des sessions passées: ${user.conversationSummary}
+          - MÉMOIRE PERSISTANTE: ${user.memoryEntries.join('; ')}`;
       }
         
       systemInstruction += `
@@ -2483,7 +2049,7 @@ export default function App() {
         // Adaptive Learning: Analyze conversation every 3 user messages
         const userMessageCount = messages.filter(m => m.role === 'user').length + 1;
         if (userMessageCount % 3 === 0) {
-          analyzeProgress(cleanInput, botText);
+          analyzeProgress(input.trim(), botText);
         }
       }
     } catch (error) {
@@ -2535,16 +2101,7 @@ export default function App() {
                     </div>
                     <div className="flex flex-col">
                       <span className="font-bold tracking-tight text-white truncate max-w-[120px]">{user?.name || "Nemo AI"}</span>
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] text-violet-400 font-medium uppercase tracking-widest">Niveau {progression.level}</span>
-                        <div className="w-12 h-1 bg-white/10 rounded-full overflow-hidden">
-                          <motion.div 
-                            initial={{ width: 0 }}
-                            animate={{ width: `${(progression.xp % 1000) / 10}%` }}
-                            className="h-full bg-violet-500"
-                          />
-                        </div>
-                      </div>
+                      <span className="text-[10px] text-violet-400 font-medium uppercase tracking-widest">{user?.level || "Premium"}</span>
                     </div>
                   </div>
                   <button onClick={toggleTheme} className="p-2 hover:bg-white/5 rounded-xl text-white/40 hover:text-white transition-all">
@@ -2848,7 +2405,7 @@ export default function App() {
 
                   <div className="space-y-3">
                     <h4 className="text-xs font-bold uppercase tracking-widest text-white/40">Entrées de mémoire</h4>
-                    {user.memoryEntries?.length > 0 ? (
+                    {user.memoryEntries.length > 0 ? (
                       user.memoryEntries.map((entry, i) => (
                         <div key={i} className="group bg-white/5 p-4 rounded-2xl border border-white/5 flex items-start justify-between gap-4 hover:bg-white/10 transition-all">
                           <div className="flex items-start gap-3">
@@ -2872,7 +2429,26 @@ export default function App() {
 
                   <div className="pt-6 border-t border-white/10">
                     <button 
-                      onClick={resetMemory}
+                      onClick={async () => {
+                        if (confirm("Réinitialiser toute la mémoire de Nemo ? Cette action supprimera également le résumé de vos conversations.")) {
+                          const res = await fetch('/api/profile/analyze', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ 
+                              analysis: { 
+                                memoryEntries: [], 
+                                conversationSummary: "", 
+                                lastTopic: "",
+                                resetMemory: true 
+                              } 
+                            })
+                          });
+                          if (res.ok) {
+                            setUser(await res.json());
+                            setShowMemoryManagement(false);
+                          }
+                        }
+                      }}
                       className="w-full py-4 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-500 font-bold hover:bg-red-500/20 transition-all flex items-center justify-center gap-2"
                     >
                       <RefreshCw className="w-4 h-4" />
@@ -2926,7 +2502,7 @@ export default function App() {
                   </button>
                 </div>
                 <div className="space-y-2">
-                  {user.memoryEntries?.length > 0 ? (
+                  {user.memoryEntries.length > 0 ? (
                     user.memoryEntries.slice(0, 3).map((entry, i) => (
                       <div key={i} className="bg-white/5 p-3 rounded-xl border border-white/5 text-xs text-white/70 flex items-start gap-3">
                         <div className="w-1.5 h-1.5 rounded-full bg-violet-500 mt-1 flex-shrink-0" />
@@ -2936,12 +2512,12 @@ export default function App() {
                   ) : (
                     <p className="text-xs text-white/20 italic">Aucune donnée en mémoire pour le moment.</p>
                   )}
-                  {user.memoryEntries?.length > 3 && (
+                  {user.memoryEntries.length > 3 && (
                     <button 
                       onClick={() => setShowMemoryManagement(true)}
                       className="w-full py-2 text-[10px] text-white/40 hover:text-white/60 transition-all"
                     >
-                      + {(user.memoryEntries?.length || 0) - 3} autres entrées
+                      + {user.memoryEntries.length - 3} autres entrées
                     </button>
                   )}
                 </div>
@@ -2988,19 +2564,6 @@ export default function App() {
             onClose={() => setShowSettings(false)} 
             user={user}
             onUpdateSettings={updateUserSettings}
-            setShowMemoryManagement={setShowMemoryManagement}
-          />
-        )}
-      </AnimatePresence>
-
-      {/* Memory Management Modal */}
-      <AnimatePresence>
-        {showMemoryManagement && (
-          <MemoryManagementModal 
-            isOpen={showMemoryManagement}
-            onClose={() => setShowMemoryManagement(false)}
-            memories={memories}
-            onDeleteMemory={deleteMemory}
           />
         )}
       </AnimatePresence>
@@ -3435,7 +2998,6 @@ export default function App() {
         isOpen={showProfile} 
         onClose={() => setShowProfile(false)} 
         profile={user} 
-        progression={progression}
       />
 
       <FavoritesModal 
@@ -3776,8 +3338,8 @@ export default function App() {
                             recognition.onstart = () => setIsRecordingVocal(true);
                             recognition.onend = () => setIsRecordingVocal(false);
                             recognition.onresult = (event: any) => {
-                              const text = event.results?.[0]?.[0]?.transcript;
-                              if (text) setInput(text);
+                              const text = event.results[0][0].transcript;
+                              setInput(text);
                             };
                             recognition.start();
                           }
@@ -3822,54 +3384,6 @@ export default function App() {
           accept="image/*,application/pdf,text/*"
         />
       </footer>
-
-      <AnimatePresence>
-        {toast && (
-          <Toast 
-            message={toast.message} 
-            type={toast.type} 
-            onClose={() => setToast(null)} 
-          />
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {showDeleteConfirm && (
-          <ConfirmationModal
-            isOpen={showDeleteConfirm}
-            onClose={() => setShowDeleteConfirm(false)}
-            onConfirm={confirmDeleteAccount}
-            title="Supprimer le compte"
-            message="Êtes-vous sûr de vouloir supprimer votre compte ? Toutes vos données, conversations et progressions seront définitivement effacées. Cette action est irréversible."
-            confirmText="Supprimer"
-            isDestructive={true}
-          />
-        )}
-
-        {showResetMemoryConfirm && (
-          <ConfirmationModal
-            isOpen={showResetMemoryConfirm}
-            onClose={() => setShowResetMemoryConfirm(false)}
-            onConfirm={confirmResetMemory}
-            title="Réinitialiser la mémoire"
-            message="Réinitialiser toute la mémoire de Nemo ? Cette action supprimera également le résumé de vos conversations. Cette action est irréversible."
-            confirmText="Réinitialiser"
-            isDestructive={true}
-          />
-        )}
-
-        {showDeleteThreadConfirm && (
-          <ConfirmationModal
-            isOpen={!!showDeleteThreadConfirm}
-            onClose={() => setShowDeleteThreadConfirm(null)}
-            onConfirm={confirmDeleteThread}
-            title="Supprimer la conversation"
-            message="Êtes-vous sûr de vouloir supprimer cette conversation ? Tous les messages seront définitivement effacés."
-            confirmText="Supprimer"
-            isDestructive={true}
-          />
-        )}
-      </AnimatePresence>
     </div>
   );
 }

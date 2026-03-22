@@ -1,91 +1,68 @@
 {
   "entities": {
     "User": {
-      "title": "User",
-      "description": "User profile information",
+      "title": "User Profile",
+      "description": "User profile data including stats and settings",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
         "email": { "type": "string" },
         "name": { "type": "string" },
         "picture": { "type": "string" },
-        "photoURL": { "type": "string" },
-        "level": { "type": "string" },
-        "registrationDate": { "type": "string", "format": "date-time" },
-        "settings": { "type": "object" }
-      }
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "level": { "type": "number" },
+        "xp": { "type": "number" },
+        "fcmToken": { "type": "string" }
+      },
+      "required": ["id", "email"]
     },
     "Conversation": {
-      "title": "Conversation",
-      "description": "A conversation thread",
+      "title": "Conversation Thread",
+      "description": "A chat thread owned by a user",
       "type": "object",
       "properties": {
         "ownerUid": { "type": "string" },
         "title": { "type": "string" },
-        "summary": { "type": "string" },
+        "lastMessage": { "type": "string" },
         "createdAt": { "type": "string", "format": "date-time" },
         "updatedAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["ownerUid", "title", "createdAt", "updatedAt"]
+      "required": ["ownerUid", "title"]
     },
     "Message": {
-      "title": "Message",
-      "description": "A message in a conversation",
+      "title": "Chat Message",
+      "description": "A single message in a conversation",
       "type": "object",
       "properties": {
         "role": { "type": "string", "enum": ["user", "bot"] },
         "content": { "type": "string" },
         "timestamp": { "type": "string", "format": "date-time" },
-        "important": { "type": "boolean" },
-        "favorite": { "type": "boolean" }
+        "image": { "type": "string" }
       },
       "required": ["role", "content", "timestamp"]
-    },
-    "Memory": {
-      "title": "Memory",
-      "description": "An important piece of information about the user",
-      "type": "object",
-      "properties": {
-        "content": { "type": "string" },
-        "category": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" },
-        "priorityLevel": { "type": "string", "enum": ["low", "medium", "high"] }
-      },
-      "required": ["content", "category", "createdAt", "priorityLevel"]
-    },
-    "Progression": {
-      "title": "Progression",
-      "description": "User progression statistics",
-      "type": "object",
-      "properties": {
-        "xp": { "type": "number" },
-        "level": { "type": "number" },
-        "activityScore": { "type": "number" },
-        "milestones": { "type": "array", "items": { "type": "string" } },
-        "badges": { "type": "array", "items": { "type": "string" } }
-      }
     }
   },
   "firestore": {
-    "/conversations/{conversationId}": {
-      "schema": "Conversation",
-      "description": "Root collection for conversations"
-    },
-    "/conversations/{conversationId}/messages/{messageId}": {
-      "schema": "Message",
-      "description": "Subcollection for messages in a conversation"
-    },
-    "/users/{uid}": {
+    "/users/{userId}": {
       "schema": "User",
       "description": "User profiles"
     },
-    "/users/{uid}/memories/{memoryId}": {
-      "schema": "Memory",
-      "description": "Important memories for a user"
+    "/conversations/{conversationId}": {
+      "schema": "Conversation",
+      "description": "Top-level conversations (used by client)"
     },
-    "/users/{uid}/progression/stats": {
-      "schema": "Progression",
-      "description": "Progression data for a user"
+    "/conversations/{conversationId}/messages/{messageId}": {
+      "schema": "Message",
+      "description": "Messages in top-level conversations"
+    },
+    "/users/{userId}/threads/{threadId}": {
+      "schema": "Conversation",
+      "description": "User-nested threads (used by server)"
+    },
+    "/users/{userId}/threads/{threadId}/messages/{messageId}": {
+      "schema": "Message",
+      "description": "Messages in user-nested threads"
     }
   }
 }
