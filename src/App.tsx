@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { GoogleGenAI, Modality } from "@google/genai";
+import { Toaster, toast } from 'sonner';
+import { GoogleGenAI, Modality, Type, ThinkingLevel, GenerateContentResponse, LiveServerMessage } from "@google/genai";
 import Markdown from 'react-markdown';
 import { motion, AnimatePresence } from 'motion/react';
 import { ArrowUp, Bot, Sparkles, Phone, Mic, MicOff, X, Volume2, Search, ExternalLink, Plus, Image as ImageIcon, FileText, Lightbulb, Paperclip, Send, Download, RefreshCw, Menu, PlusCircle, History, Settings, LogOut, Trash2, Edit3, MessageSquare, ChevronLeft, Maximize2, Minimize2, ZoomIn, Copy, Check, Pause, Square, MoreVertical, Pin, Star, Share2, Zap, Terminal, Globe, UserCircle, Briefcase, Mic2, Sword, Gamepad2, Heart, Code2, Loader2, Sun, Moon, BarChart2, Scissors, FileDown, ArrowLeft } from 'lucide-react';
@@ -3183,8 +3184,12 @@ export default function App() {
         const audioUrl = addWavHeader(base64Audio, 24000);
         audioCache.current[messageId] = audioUrl;
       }
-    } catch (error) {
-      console.error("Preload TTS error:", error);
+    } catch (error: any) {
+      if (error?.message?.includes('429') || error?.message?.includes('RESOURCE_EXHAUSTED')) {
+        console.warn("Preload TTS quota exceeded (429)");
+      } else {
+        console.error("Preload TTS error:", error);
+      }
     }
   };
 
@@ -3277,10 +3282,20 @@ export default function App() {
       } else {
         console.warn("No audio data received from Gemini");
         setActiveTTSMessageId(null);
+        toast.error("Échec de la génération audio.");
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("TTS error:", error);
       setActiveTTSMessageId(null);
+      
+      if (error?.message?.includes('429') || error?.message?.includes('RESOURCE_EXHAUSTED')) {
+        toast.error("Quota TTS épuisé. Veuillez réessayer dans quelques instants.", {
+          description: "La limite de lecture vocale a été atteinte pour le moment.",
+          duration: 5000,
+        });
+      } else {
+        toast.error("Erreur lors de la lecture vocale.");
+      }
     } finally {
       setIsTTSLoading(false);
     }
@@ -4084,6 +4099,7 @@ export default function App() {
 
   return (
     <div className="h-screen bg-background text-foreground flex flex-col relative overflow-hidden font-sans select-none">
+      <Toaster position="top-center" richColors closeButton />
       {/* Sidebar / Drawer */}
       <AnimatePresence>
         {showSidebar && (
