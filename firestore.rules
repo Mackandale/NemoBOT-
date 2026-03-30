@@ -1,98 +1,83 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    
     // ===============================================================
     // Helper Functions
     // ===============================================================
+    
     function isAuthenticated() {
       return request.auth != null;
     }
-
+    
     function isOwner(userId) {
       return isAuthenticated() && request.auth.uid == userId;
     }
-
-    function isDocOwner() {
-      return isAuthenticated() && request.auth.uid == resource.data.ownerUid;
-    }
-
-    function uidUnchanged(field) {
-      return !(field in request.resource.data) || request.resource.data[field] == request.auth.uid;
+    
+    function isAdmin() {
+      return isAuthenticated() && 
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.roles.admin == true ||
+         (request.auth.token.email == "mackandaledardayes@gmail.com" && request.auth.token.email_verified == true));
     }
 
     function fieldUnchanged(field) {
       return !(field in request.resource.data) || request.resource.data[field] == resource.data[field];
     }
 
-    function hasRequiredFields(fields) {
-      return request.resource.data.keys().hasAll(fields);
-    }
-
-    function isValidString(field, minLen, maxLen) {
-      return request.resource.data[field] is string && 
-             request.resource.data[field].size() >= minLen && 
-             request.resource.data[field].size() <= maxLen;
-    }
-
     // ===============================================================
-    // Domain Validators
-    // ===============================================================
-    function isValidUser(data) {
-      return data.keys().hasAny(['id', 'email', 'name']) &&
-             (data.id is string) && (data.email is string);
-    }
-
-    function isValidConversation(data) {
-      return data.keys().hasAll(['ownerUid', 'title']) &&
-             data.ownerUid is string &&
-             data.title is string && data.title.size() <= 100;
-    }
-
-    function isValidMessage(data) {
-      return data.keys().hasAll(['role', 'content', 'timestamp']) &&
-             data.role in ['user', 'bot'] &&
-             data.content is string && data.content.size() <= 10000;
-    }
-
-    // ===============================================================
-    // Rules
+    // User Profiles
     // ===============================================================
     
-    // User Profiles
     match /users/{userId} {
-      allow read: if isOwner(userId);
-      allow create: if isOwner(userId) && isValidUser(request.resource.data);
-      allow update: if isOwner(userId) && isValidUser(request.resource.data) && fieldUnchanged('id');
-      
-      // Threads subcollection (used by server, but client might access too)
-      match /threads/{threadId} {
-        allow read: if isOwner(userId);
-        allow create: if isOwner(userId) && isValidConversation(request.resource.data);
-        allow update: if isOwner(userId) && isValidConversation(request.resource.data) && fieldUnchanged('ownerUid');
-        allow delete: if isOwner(userId);
-
-        match /messages/{messageId} {
-          allow read: if isOwner(userId);
-          allow create: if isOwner(userId) && isValidMessage(request.resource.data);
-          allow update: if isOwner(userId) && isValidMessage(request.resource.data);
-          allow delete: if isOwner(userId);
-        }
-      }
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isAuthenticated() && request.auth.uid == userId;
+      allow update: if (isOwner(userId) || isAdmin()) && fieldUnchanged('uid');
     }
 
-    // Top-level Conversations (used by client)
+    // ===============================================================
+    // Conversations
+    // ===============================================================
+    
     match /conversations/{conversationId} {
-      allow read: if isAuthenticated() && (resource == null || resource.data.ownerUid == request.auth.uid);
-      allow create: if isAuthenticated() && isValidConversation(request.resource.data) && request.resource.data.ownerUid == request.auth.uid;
-      allow update: if isAuthenticated() && resource.data.ownerUid == request.auth.uid && isValidConversation(request.resource.data) && fieldUnchanged('ownerUid');
-      allow delete: if isAuthenticated() && resource.data.ownerUid == request.auth.uid;
+      allow read: if isAuthenticated() && (resource.data.ownerUid == request.auth.uid || isAdmin());
+      allow create: if isAuthenticated() && request.resource.data.ownerUid == request.auth.uid;
+      allow update: if isAuthenticated() && (resource.data.ownerUid == request.auth.uid || isAdmin()) && fieldUnchanged('ownerUid');
+      allow delete: if isAuthenticated() && (resource.data.ownerUid == request.auth.uid || isAdmin());
+    }
 
-      match /messages/{messageId} {
-        allow read: if isAuthenticated() && get(/databases/$(database)/documents/conversations/$(conversationId)).data.ownerUid == request.auth.uid;
-        allow create: if isAuthenticated() && get(/databases/$(database)/documents/conversations/$(conversationId)).data.ownerUid == request.auth.uid && isValidMessage(request.resource.data);
-        allow update: if isAuthenticated() && get(/databases/$(database)/documents/conversations/$(conversationId)).data.ownerUid == request.auth.uid && isValidMessage(request.resource.data);
-        allow delete: if isAuthenticated() && get(/databases/$(database)/documents/conversations/$(conversationId)).data.ownerUid == request.auth.uid;
+    // ===============================================================
+    // Messages
+    // ===============================================================
+    
+    match /messages/{messageId} {
+      function canAccessConversation(conversationId) {
+        return get(/databases/$(database)/documents/conversations/$(conversationId)).data.ownerUid == request.auth.uid || isAdmin();
       }
+
+      allow read: if isAuthenticated() && canAccessConversation(resource.data.conversationId);
+      allow create: if isAuthenticated() && canAccessConversation(request.resource.data.conversationId);
+      allow update: if isAuthenticated() && canAccessConversation(resource.data.conversationId) && fieldUnchanged('conversationId');
+      allow delete: if isAuthenticated() && canAccessConversation(resource.data.conversationId);
+    }
+
+    // ===============================================================
+    // Memory
+    // ===============================================================
+    
+    match /memory/{memoryId} {
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow update: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin()) && fieldUnchanged('userId');
+      allow delete: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+    }
+
+    // ===============================================================
+    // User Roles
+    // ===============================================================
+    
+    match /user_roles/{email} {
+      allow read: if isAuthenticated() && (request.auth.token.email == email || isAdmin());
+      allow write: if isAdmin();
     }
   }
 }

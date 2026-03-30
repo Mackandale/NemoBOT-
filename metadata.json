@@ -1,5 +1,5 @@
 {
   "name": "Nemo",
   "description": "L'intelligence artificielle de Lazarus Lab. Un collaborateur intelligent et membre à part entière de l'équipe.",
-  "requestFramePermissions": ["microphone"]
+  "requestFramePermissions": ["camera", "microphone", "geolocation"]
 }

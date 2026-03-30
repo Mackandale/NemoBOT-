@@ -1,4 +1,4 @@
-import { GoogleGenAI, Modality } from "@google/genai";
+import { GoogleGenAI, Modality, ThinkingLevel } from "@google/genai";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
 
@@ -56,6 +56,7 @@ Utilise le Markdown pour structurer tes réponses.`;
         systemInstruction,
         temperature: 0.7,
         topP: 0.95,
+        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }
       },
     });
 
@@ -81,6 +82,7 @@ Exemple: [{"content": "L'utilisateur préfère le code en TypeScript", "type": "
       config: {
         systemInstruction,
         responseMimeType: "application/json",
+        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }
       },
     });
 

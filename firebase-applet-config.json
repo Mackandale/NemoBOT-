@@ -1,9 +1,10 @@
 {
-  "apiKey": "AIzaSyAOBPl7p_8b_j8ghQs-DC6txiVk4_KX-Ng",
-  "authDomain": "nemo-ia.firebaseapp.com",
-  "projectId": "nemo-ia",
-  "storageBucket": "nemo-ia.firebasestorage.app",
-  "messagingSenderId": "80789688035",
-  "appId": "1:80789688035:web:093eadb201c22852133fd6",
-  "measurementId": "G-P0VSYW5VJN"
+  "projectId": "gen-lang-client-0143171191",
+  "appId": "1:909071502772:web:7e10492697089c2761f6e1",
+  "apiKey": "AIzaSyB7UToa8snjjK-Xd6gY_osjKUErrygWSes",
+  "authDomain": "gen-lang-client-0143171191.firebaseapp.com",
+  "firestoreDatabaseId": "ai-studio-9d0b187f-1636-4518-a61b-5cb5e9a7637b",
+  "storageBucket": "gen-lang-client-0143171191.firebasestorage.app",
+  "messagingSenderId": "909071502772",
+  "measurementId": ""
 }

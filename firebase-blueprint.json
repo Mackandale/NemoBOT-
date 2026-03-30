@@ -2,45 +2,93 @@
   "entities": {
     "User": {
       "title": "User Profile",
-      "description": "User profile data including stats and settings",
+      "description": "User profile data including stats, settings, and roles",
       "type": "object",
       "properties": {
-        "id": { "type": "string" },
+        "uid": { "type": "string" },
         "email": { "type": "string" },
         "name": { "type": "string" },
-        "picture": { "type": "string" },
+        "photoURL": { "type": "string" },
         "createdAt": { "type": "string", "format": "date-time" },
         "updatedAt": { "type": "string", "format": "date-time" },
-        "level": { "type": "number" },
-        "xp": { "type": "number" },
-        "fcmToken": { "type": "string" }
+        "roles": {
+          "type": "object",
+          "properties": {
+            "user": { "type": "boolean" },
+            "lazarus": { "type": "boolean" },
+            "admin": { "type": "boolean" }
+          }
+        },
+        "settings": {
+          "type": "object",
+          "properties": {
+            "theme": { "type": "string" },
+            "voice": { "type": "string" },
+            "language": { "type": "string" },
+            "personality": { "type": "string" },
+            "zoomDisabled": { "type": "boolean" }
+          }
+        },
+        "progression": {
+          "type": "object",
+          "properties": {
+            "xp": { "type": "number" },
+            "level": { "type": "number" },
+            "rank": { "type": "string" },
+            "activityScore": { "type": "number" }
+          }
+        }
       },
-      "required": ["id", "email"]
+      "required": ["uid", "email"]
     },
     "Conversation": {
-      "title": "Conversation Thread",
-      "description": "A chat thread owned by a user",
+      "title": "Conversation",
+      "description": "A chat conversation thread",
       "type": "object",
       "properties": {
         "ownerUid": { "type": "string" },
         "title": { "type": "string" },
-        "lastMessage": { "type": "string" },
         "createdAt": { "type": "string", "format": "date-time" },
-        "updatedAt": { "type": "string", "format": "date-time" }
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "pinned": { "type": "boolean" },
+        "favorite": { "type": "boolean" }
       },
       "required": ["ownerUid", "title"]
     },
     "Message": {
-      "title": "Chat Message",
+      "title": "Message",
       "description": "A single message in a conversation",
       "type": "object",
       "properties": {
-        "role": { "type": "string", "enum": ["user", "bot"] },
+        "conversationId": { "type": "string" },
+        "role": { "type": "string", "enum": ["user", "assistant"] },
         "content": { "type": "string" },
-        "timestamp": { "type": "string", "format": "date-time" },
-        "image": { "type": "string" }
+        "timestamp": { "type": "string", "format": "date-time" }
       },
-      "required": ["role", "content", "timestamp"]
+      "required": ["conversationId", "role", "content", "timestamp"]
+    },
+    "Memory": {
+      "title": "User Memory",
+      "description": "Important information about the user stored for long-term context",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "content": { "type": "string" },
+        "importance": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "content", "importance"]
+    },
+    "UserRole": {
+      "title": "User Role",
+      "description": "Special roles assigned to users (e.g., lazarus)",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "role": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["email", "role"]
     }
   },
   "firestore": {
@@ -50,19 +98,19 @@
     },
     "/conversations/{conversationId}": {
       "schema": "Conversation",
-      "description": "Top-level conversations (used by client)"
+      "description": "Chat conversations"
     },
-    "/conversations/{conversationId}/messages/{messageId}": {
+    "/messages/{messageId}": {
       "schema": "Message",
-      "description": "Messages in top-level conversations"
+      "description": "Individual chat messages"
     },
-    "/users/{userId}/threads/{threadId}": {
-      "schema": "Conversation",
-      "description": "User-nested threads (used by server)"
+    "/memory/{memoryId}": {
+      "schema": "Memory",
+      "description": "User memories for AI context"
     },
-    "/users/{userId}/threads/{threadId}/messages/{messageId}": {
-      "schema": "Message",
-      "description": "Messages in user-nested threads"
+    "/user_roles/{email}": {
+      "schema": "UserRole",
+      "description": "User special roles"
     }
   }
 }

@@ -3,60 +3,205 @@
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --color-background: var(--bg-deep);
+  --color-foreground: var(--text-primary);
+  --color-secondary: var(--bg-secondary);
+  --color-tertiary: var(--bg-tertiary);
+  --color-border-primary: var(--border-primary);
 }
 
 :root {
-  background-color: #050505;
-  color: #ffffff;
+  --bg-deep: #000000;
+  --bg-secondary: #0d0d0d;
+  --bg-tertiary: #121212;
+  --text-primary: #ffffff;
+  --text-secondary: rgba(255, 255, 255, 0.8);
+  --text-muted: rgba(255, 255, 255, 0.4);
+  --accent-blue: #3b82f6;
+  --accent-purple: #8b5cf6;
+  --glass-bg: rgba(255, 255, 255, 0.03);
+  --glass-border: rgba(255, 255, 255, 0.1);
+  --border-primary: rgba(255, 255, 255, 0.15);
 }
 
-.custom-scrollbar::-webkit-scrollbar {
+.light-theme {
+  --bg-deep: #ffffff;
+  --bg-secondary: #f5f5f5;
+  --bg-tertiary: #eeeeee;
+  --text-primary: #000000;
+  --text-secondary: rgba(0, 0, 0, 0.8);
+  --text-muted: rgba(0, 0, 0, 0.5);
+  --glass-bg: rgba(0, 0, 0, 0.03);
+  --glass-border: rgba(0, 0, 0, 0.1);
+  --border-primary: rgba(0, 0, 0, 0.1);
+}
+
+body {
+  background-color: var(--bg-deep);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  overflow-x: hidden;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Scrollbar Styling */
+::-webkit-scrollbar {
   width: 4px;
 }
 
-.custom-scrollbar::-webkit-scrollbar-track {
+::-webkit-scrollbar-track {
   background: transparent;
 }
 
-.custom-scrollbar::-webkit-scrollbar-thumb {
-  background: #27272a;
+::-webkit-scrollbar-thumb {
+  background: var(--border-primary);
   border-radius: 10px;
 }
 
-.custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: #3f3f46;
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
 }
 
-.markdown-body {
-  line-height: 1.6;
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
 }
 
-.markdown-body p {
-  margin-bottom: 1rem;
+/* Markdown Styling */
+.markdown-premium {
+  @apply text-[15px] leading-relaxed space-y-4;
+  color: var(--text-secondary);
 }
 
-.markdown-body ul, .markdown-body ol {
-  margin-bottom: 1rem;
-  padding-left: 1.5rem;
+.markdown-premium h1, .markdown-premium h2, .markdown-premium h3 {
+  @apply font-black tracking-tight mt-6 mb-4 uppercase;
+  color: var(--text-primary);
 }
 
-.markdown-body li {
-  margin-bottom: 0.5rem;
+.markdown-premium h1 { @apply text-2xl; }
+.markdown-premium h2 { @apply text-xl; }
+.markdown-premium h3 { @apply text-lg; }
+
+.markdown-premium p {
+  @apply mb-4;
 }
 
-.markdown-body code {
-  background-color: rgba(255, 255, 255, 0.1);
-  padding: 0.2rem 0.4rem;
-  border-radius: 4px;
-  font-family: var(--font-mono);
-  font-size: 0.85em;
+.markdown-premium strong {
+  @apply font-black px-1 rounded;
+  color: var(--text-primary);
+  background: var(--glass-bg);
 }
 
-.markdown-body pre {
-  background-color: #0a0a0a;
-  padding: 1rem;
-  border-radius: 8px;
-  overflow-x: auto;
-  margin-bottom: 1rem;
-  border: 1px solid #27272a;
+.markdown-premium ul, .markdown-premium ol {
+  @apply space-y-2 ml-4;
+}
+
+.markdown-premium li {
+  @apply relative pl-4;
+}
+
+.markdown-premium li::before {
+  content: "•";
+  @apply absolute left-0 text-violet-400 font-bold;
+}
+
+.markdown-premium code {
+  @apply px-1.5 py-0.5 rounded font-mono text-sm text-violet-300 border;
+  background: var(--glass-bg);
+  border-color: var(--glass-border);
+}
+
+.markdown-premium pre {
+  @apply p-4 rounded-2xl border my-6 overflow-x-auto shadow-2xl;
+  background: var(--bg-tertiary);
+  border-color: var(--glass-border);
+}
+
+.markdown-premium blockquote {
+  @apply border-l-4 border-violet-500/50 pl-4 italic py-2 rounded-r-xl;
+  color: var(--text-muted);
+  background: var(--glass-bg);
+}
+
+.markdown-premium table {
+  @apply w-full border-collapse my-6 overflow-hidden rounded-2xl border border-foreground/10 shadow-xl;
+}
+
+.markdown-premium th {
+  @apply bg-foreground/5 text-foreground font-black text-xs uppercase tracking-widest p-4 text-left border-b border-foreground/10;
+}
+
+.markdown-premium td {
+  @apply p-4 text-sm border-b border-foreground/5 transition-colors;
+  color: var(--text-secondary);
+}
+
+.markdown-premium tr:last-child td {
+  @apply border-b-0;
+}
+
+.markdown-premium tr:nth-child(even) {
+  @apply bg-foreground/[0.02];
+}
+
+.markdown-premium tr:hover td {
+  @apply bg-foreground/[0.05];
+}
+
+.markdown-premium thead {
+  @apply bg-foreground/5;
+}
+
+/* Message Bubbles */
+.message-bubble-user {
+  @apply bg-violet-600 text-white px-5 py-3 rounded-2xl rounded-tr-none shadow-xl shadow-violet-600/10 max-w-[85%] sm:max-w-[70%] font-medium text-[15px] leading-snug;
+}
+
+/* Action Bar */
+.message-actions-bar {
+  @apply flex flex-wrap items-center gap-2 mt-4 opacity-0 group-hover:opacity-100 transition-all duration-300 translate-y-2 group-hover:translate-y-0;
+}
+
+.action-btn-pill {
+  @apply flex items-center gap-2 px-3 py-2 border rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all min-h-[36px];
+  background: var(--glass-bg);
+  border-color: var(--glass-border);
+  color: var(--text-muted);
+}
+
+.action-btn-pill:hover {
+  background: var(--glass-border);
+  color: var(--text-primary);
+}
+
+/* Input Bar */
+.input-bar-container {
+  @apply backdrop-blur-2xl border rounded-3xl shadow-2xl transition-all duration-500 px-2 py-2;
+  background: var(--bg-secondary);
+  border-color: var(--glass-border);
+}
+
+.input-bar-container:focus-within {
+  @apply shadow-violet-500/5;
+  border-color: var(--border-primary);
+}
+
+/* Animations */
+@keyframes fadeInSlide {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-message {
+  animation: fadeInSlide 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+/* Long Mode */
+.long-mode-overlay {
+  @apply fixed inset-0 z-[100] flex flex-col p-6 sm:p-12;
+  background: var(--bg-tertiary);
+}
+
+.long-mode-textarea {
+  @apply flex-1 bg-transparent border-none text-xl sm:text-2xl focus:ring-0 outline-none resize-none font-medium leading-relaxed;
+  color: var(--text-primary);
 }

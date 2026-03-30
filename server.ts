@@ -21,47 +21,65 @@ const initializeFirebase = () => {
   }
 
   try {
-    // Handle literal newlines and escaped newlines
-    privateKey = privateKey.replace(/\\n/g, '\n');
-    // Remove any surrounding quotes (single or double) and trim whitespace
+    // 1. Check if it's a placeholder or obviously invalid
+    const isPlaceholder = privateKey.includes('...') || 
+                         privateKey.includes('YOUR_PRIVATE_KEY') || 
+                         privateKey.includes('PLACEHOLDER');
+    
+    if (isPlaceholder) {
+      console.warn("Firebase private key is a placeholder. Firebase features will be disabled.");
+      return false;
+    }
+
+    // 2. Check if it looks like a Private Key ID (hex string, ~40 chars) instead of a key
+    if (privateKey.length < 100 && /^[a-f0-9]+$/i.test(privateKey.trim())) {
+      console.warn("FIREBASE_PRIVATE_KEY appears to be a Key ID instead of the actual Private Key content. Please ensure you are using the 'private_key' field from your service account JSON.");
+      return false;
+    }
+
+    // 3. Check if it's a full JSON string
+    if (privateKey.trim().startsWith('{')) {
+      try {
+        const sa = JSON.parse(privateKey.trim());
+        if (sa.private_key) {
+          privateKey = sa.private_key;
+          console.log("Extracted private key from service account JSON.");
+        }
+      } catch (e) {
+        // Not JSON, continue
+      }
+    }
+
+    // 4. Basic cleanup
+    privateKey = privateKey.replace(/\\n/g, '\n').replace(/\\r/g, '\r');
     privateKey = privateKey.trim().replace(/^["']|["']$/g, '');
+
+    // 5. Normalize PEM structure
+    const base64Content = privateKey
+      .replace(/-----BEGIN[\s\S]+?-----/g, '')
+      .replace(/-----END[\s\S]+?-----/g, '')
+      .replace(/[^A-Za-z0-9+/=]/g, ''); 
     
-    // Ensure the private key has the correct PEM headers and formatting
-    if (!privateKey.includes('-----BEGIN PRIVATE KEY-----')) {
-      // If it's just the base64 string, wrap it
-      privateKey = `-----BEGIN PRIVATE KEY-----\n${privateKey}\n-----END PRIVATE KEY-----`;
-    } else {
-      // If it has headers, ensure there's a newline after the header and before the footer
-      privateKey = privateKey.replace('-----BEGIN PRIVATE KEY-----', '-----BEGIN PRIVATE KEY-----\n');
-      privateKey = privateKey.replace('-----END PRIVATE KEY-----', '\n-----END PRIVATE KEY-----');
+    if (!base64Content || base64Content.length < 100) {
+      console.warn(`Firebase private key content is too short (${base64Content?.length || 0} chars). It should be a long base64 string. Firebase features will be disabled.`);
+      return false;
     }
-    
-    // Remove any double newlines and ensure the key is properly formatted
-    privateKey = privateKey.replace(/\n\n+/g, '\n');
-    
-    // If the key content itself has spaces, it might be invalid
-    // But we should only remove spaces within the base64 block, not the headers
-    const parts = privateKey.split('\n');
-    if (parts.length > 2) {
-      const header = parts[0];
-      const footer = parts[parts.length - 1];
-      const content = parts.slice(1, -1).join('').replace(/\s+/g, '');
-      // Re-format content with newlines every 64 characters (standard PEM)
-      const formattedContent = content.match(/.{1,64}/g)?.join('\n') || content;
-      privateKey = `${header}\n${formattedContent}\n${footer}`;
-    }
+
+    // Re-wrap base64 content with newlines every 64 characters
+    const wrappedContent = base64Content.match(/.{1,64}/g)?.join('\n') || base64Content;
+    const finalKey = `-----BEGIN PRIVATE KEY-----\n${wrappedContent}\n-----END PRIVATE KEY-----\n`;
 
     admin.initializeApp({
       credential: admin.credential.cert({
         projectId,
-        privateKey,
+        privateKey: finalKey,
         clientEmail,
       }),
     });
-    console.log("Firebase Admin initialized successfully.");
+    console.log("Firebase Admin initialized successfully with normalized key.");
     return true;
   } catch (error) {
-    console.error("Firebase Admin initialization error:", error);
+    console.error("Firebase Admin initialization error:", error instanceof Error ? error.message : error);
     return false;
   }
 };
@@ -102,19 +120,50 @@ app.post("/api/login/firebase", async (req, res) => {
     const decodedToken = await admin.auth().verifyIdToken(token);
     req.session!.userId = decodedToken.uid;
     
-    // Ensure user exists in Firestore (server-side check/init)
+    // Automatic user creation/update
     const db = getDb();
     if (db) {
       const userRef = db.collection("users").doc(decodedToken.uid);
       const userDoc = await userRef.get();
+      
+      const userData = {
+        uid: decodedToken.uid,
+        email: decodedToken.email || "",
+        name: decodedToken.name || "Utilisateur",
+        photoURL: decodedToken.picture || "",
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      };
+
       if (!userDoc.exists) {
+        // First connection: create with default structure
         await userRef.set({
-          id: decodedToken.uid,
-          email: decodedToken.email || "",
-          name: decodedToken.name || "Utilisateur",
-          picture: decodedToken.picture || "",
-          createdAt: admin.firestore.FieldValue.serverTimestamp()
+          ...userData,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          roles: {
+            user: true,
+            lazarus: false,
+            admin: decodedToken.email === "mackandaledardayes@gmail.com" // Set default admin
+          },
+          settings: {
+            theme: "dark",
+            voice: "Kore",
+            language: "fr",
+            personality: "Nemo",
+            zoomDisabled: false,
+            speechSpeed: 1.0
+          },
+          progression: {
+            xp: 0,
+            level: 1,
+            rank: "Explorateur",
+            activityScore: 0
+          }
         });
+        console.log(`New user created: ${decodedToken.uid}`);
+      } else {
+        // Subsequent connection: update basic info only
+        await userRef.update(userData);
+        console.log(`User updated: ${decodedToken.uid}`);
       }
     }
 
@@ -163,8 +212,28 @@ app.post("/api/profile/analyze", async (req, res) => {
         updatedAt: admin.firestore.FieldValue.serverTimestamp()
       };
 
-      if (analysis.level) updates.level = analysis.level;
-      if (analysis.memoryEntry) updates.memoryEntries = admin.firestore.FieldValue.arrayUnion(analysis.memoryEntry);
+  if (analysis.level) updates.level = analysis.level;
+  if (analysis.topic) updates.currentTopic = analysis.topic;
+  if (analysis.summary) updates.lastSessionSummary = analysis.summary;
+
+  if (analysis.memories && Array.isArray(analysis.memories)) {
+    const currentMemories = user.memoryEntries || [];
+    let updatedMemories = [...currentMemories];
+
+    analysis.memories.forEach((m: any) => {
+      if (m.importance >= 8) {
+        const keyPrefix = `${m.key}:`;
+        // Remove old entry with the same key
+        updatedMemories = updatedMemories.filter((entry: string) => !entry.startsWith(keyPrefix));
+        // Add new entry
+        updatedMemories.push(`${m.key}: ${m.content}`);
+      }
+    });
+    
+    if (JSON.stringify(updatedMemories) !== JSON.stringify(currentMemories)) {
+      updates.memoryEntries = updatedMemories;
+    }
+  }
 
       t.update(userRef, updates);
     });
@@ -177,102 +246,125 @@ app.post("/api/profile/analyze", async (req, res) => {
   }
 });
 
-// Thread Routes
-app.get("/api/threads", async (req, res) => {
+// Conversation Routes
+app.get("/api/conversations", async (req, res) => {
   if (!req.session?.userId) return res.status(401).json({ error: "Not authenticated" });
   const db = getDb();
   if (!db) return res.status(500).json({ error: "Database not initialized" });
 
   try {
-    const snapshot = await db.collection("users").doc(req.session.userId)
-      .collection("threads")
+    const snapshot = await db.collection("conversations")
+      .where("ownerUid", "==", req.session.userId)
       .orderBy("updatedAt", "desc")
       .get();
     
-    const threads = snapshot.docs.map(doc => ({
+    const conversations = snapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data(),
       updatedAt: doc.data().updatedAt?.toDate() || new Date(),
       createdAt: doc.data().createdAt?.toDate() || new Date()
     }));
-    res.json(threads);
+    res.json(conversations);
   } catch (error) {
-    res.status(500).json({ error: "Error fetching threads" });
+    console.error("Error fetching conversations:", error);
+    res.status(500).json({ error: "Error fetching conversations" });
   }
 });
 
-app.post("/api/threads", async (req, res) => {
+app.post("/api/conversations", async (req, res) => {
   if (!req.session?.userId) return res.status(401).json({ error: "Not authenticated" });
   const db = getDb();
   if (!db) return res.status(500).json({ error: "Database not initialized" });
 
   const { title } = req.body;
   try {
-    const threadRef = await db.collection("users").doc(req.session.userId)
-      .collection("threads")
-      .add({
-        title: title || "Nouvelle conversation",
-        lastMessage: "",
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
-      });
-    res.json({ id: threadRef.id, title: title || "Nouvelle conversation" });
+    const convRef = await db.collection("conversations").add({
+      ownerUid: req.session.userId,
+      title: title || "Nouvelle conversation",
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      pinned: false,
+      favorite: false
+    });
+    res.json({ id: convRef.id, title: title || "Nouvelle conversation" });
   } catch (error) {
-    res.status(500).json({ error: "Error creating thread" });
+    res.status(500).json({ error: "Error creating conversation" });
   }
 });
 
-app.patch("/api/threads/:threadId", async (req, res) => {
+app.patch("/api/conversations/:id", async (req, res) => {
   if (!req.session?.userId) return res.status(401).json({ error: "Not authenticated" });
   const db = getDb();
   if (!db) return res.status(500).json({ error: "Database not initialized" });
 
-  const { threadId } = req.params;
-  const { title } = req.body;
+  const { id } = req.params;
+  const updates = req.body;
+  
+  // Security check: ensure user owns the conversation
+  const convRef = db.collection("conversations").doc(id);
+  const convDoc = await convRef.get();
+  if (!convDoc.exists || convDoc.data()?.ownerUid !== req.session.userId) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+
   try {
-    await db.collection("users").doc(req.session.userId)
-      .collection("threads")
-      .doc(threadId)
-      .update({ title, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+    await convRef.update({
+      ...updates,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
     res.json({ success: true });
   } catch (error) {
-    res.status(500).json({ error: "Error updating thread" });
+    res.status(500).json({ error: "Error updating conversation" });
   }
 });
 
-app.delete("/api/threads/:threadId", async (req, res) => {
+app.delete("/api/conversations/:id", async (req, res) => {
   if (!req.session?.userId) return res.status(401).json({ error: "Not authenticated" });
   const db = getDb();
   if (!db) return res.status(500).json({ error: "Database not initialized" });
 
-  const { threadId } = req.params;
+  const { id } = req.params;
+  
+  // Security check
+  const convRef = db.collection("conversations").doc(id);
+  const convDoc = await convRef.get();
+  if (!convDoc.exists || convDoc.data()?.ownerUid !== req.session.userId) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+
   try {
-    const threadRef = db.collection("users").doc(req.session.userId).collection("threads").doc(threadId);
-    
-    // Delete messages in thread
-    const messages = await threadRef.collection("messages").get();
     const batch = db.batch();
+    
+    // Delete messages
+    const messages = await db.collection("messages").where("conversationId", "==", id).get();
     messages.forEach(doc => batch.delete(doc.ref));
-    batch.delete(threadRef);
+    
+    batch.delete(convRef);
     await batch.commit();
     
     res.json({ success: true });
   } catch (error) {
-    res.status(500).json({ error: "Error deleting thread" });
+    res.status(500).json({ error: "Error deleting conversation" });
   }
 });
 
-app.get("/api/threads/:threadId/messages", async (req, res) => {
+// Message Routes
+app.get("/api/conversations/:id/messages", async (req, res) => {
   if (!req.session?.userId) return res.status(401).json({ error: "Not authenticated" });
   const db = getDb();
   if (!db) return res.status(500).json({ error: "Database not initialized" });
 
-  const { threadId } = req.params;
+  const { id } = req.params;
+  
+  // Security check
+  const convDoc = await db.collection("conversations").doc(id).get();
+  if (!convDoc.exists || convDoc.data()?.ownerUid !== req.session.userId) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+
   try {
-    const snapshot = await db.collection("users").doc(req.session.userId)
-      .collection("threads")
-      .doc(threadId)
-      .collection("messages")
+    const snapshot = await db.collection("messages")
+      .where("conversationId", "==", id)
       .orderBy("timestamp", "asc")
       .get();
     
@@ -287,30 +379,31 @@ app.get("/api/threads/:threadId/messages", async (req, res) => {
   }
 });
 
-app.post("/api/threads/:threadId/messages", async (req, res) => {
+app.post("/api/conversations/:id/messages", async (req, res) => {
   if (!req.session?.userId) return res.status(401).json({ error: "Not authenticated" });
   const db = getDb();
   if (!db) return res.status(500).json({ error: "Database not initialized" });
 
-  const { threadId } = req.params;
-  const { role, content, image, file, groundingMetadata } = req.body;
+  const { id } = req.params;
+  const { role, content } = req.body;
+
+  // Security check
+  const convRef = db.collection("conversations").doc(id);
+  const convDoc = await convRef.get();
+  if (!convDoc.exists || convDoc.data()?.ownerUid !== req.session.userId) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+
   try {
-    const threadRef = db.collection("users").doc(req.session.userId).collection("threads").doc(threadId);
-    
-    const msgData: any = {
+    const msgRef = await db.collection("messages").add({
+      conversationId: id,
       role,
       content,
       timestamp: admin.firestore.FieldValue.serverTimestamp()
-    };
-    if (image) msgData.image = image;
-    if (file) msgData.file = file;
-    if (groundingMetadata) msgData.groundingMetadata = groundingMetadata;
-
-    const msgRef = await threadRef.collection("messages").add(msgData);
+    });
     
-    // Update thread last message and timestamp
-    await threadRef.update({
-      lastMessage: content.substring(0, 100),
+    // Update conversation timestamp
+    await convRef.update({
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     });
 
@@ -320,46 +413,91 @@ app.post("/api/threads/:threadId/messages", async (req, res) => {
   }
 });
 
-app.get("/api/messages", async (req, res) => {
+// Memory Routes
+app.get("/api/memory", async (req, res) => {
   if (!req.session?.userId) return res.status(401).json({ error: "Not authenticated" });
   const db = getDb();
   if (!db) return res.status(500).json({ error: "Database not initialized" });
 
   try {
-    const snapshot = await db.collection("users").doc(req.session.userId)
-      .collection("messages")
-      .orderBy("timestamp", "asc")
-      .limit(50)
+    const snapshot = await db.collection("memory")
+      .where("userId", "==", req.session.userId)
+      .orderBy("createdAt", "desc")
       .get();
     
-    const messages = snapshot.docs.map(doc => ({
+    const memories = snapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data(),
-      timestamp: doc.data().timestamp?.toDate() || new Date()
+      createdAt: doc.data().createdAt?.toDate() || new Date()
     }));
-    res.json(messages);
+    res.json(memories);
   } catch (error) {
-    res.status(500).json({ error: "Error fetching messages" });
+    res.status(500).json({ error: "Error fetching memory" });
   }
 });
 
-app.post("/api/messages", async (req, res) => {
+app.post("/api/memory", async (req, res) => {
   if (!req.session?.userId) return res.status(401).json({ error: "Not authenticated" });
   const db = getDb();
   if (!db) return res.status(500).json({ error: "Database not initialized" });
 
-  const { role, content } = req.body;
+  const { content, importance } = req.body;
   try {
-    const msgRef = await db.collection("users").doc(req.session.userId)
-      .collection("messages")
-      .add({
-        role,
-        content,
-        timestamp: admin.firestore.FieldValue.serverTimestamp()
-      });
-    res.json({ id: msgRef.id });
+    const memRef = await db.collection("memory").add({
+      userId: req.session.userId,
+      content,
+      importance: importance || 5,
+      createdAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+    res.json({ id: memRef.id });
   } catch (error) {
-    res.status(500).json({ error: "Error saving message" });
+    res.status(500).json({ error: "Error saving memory" });
+  }
+});
+
+// Progression Routes
+app.post("/api/progression/update", async (req, res) => {
+  if (!req.session?.userId) return res.status(401).json({ error: "Not authenticated" });
+  const db = getDb();
+  if (!db) return res.status(500).json({ error: "Database not initialized" });
+
+  const { xpGain } = req.body;
+  const userRef = db.collection("users").doc(req.session.userId);
+
+  try {
+    await db.runTransaction(async (t) => {
+      const doc = await t.get(userRef);
+      const user = doc.data();
+      if (!user) return;
+
+      let { xp, level, rank } = user.progression || { xp: 0, level: 1, rank: "Explorateur" };
+      xp += xpGain;
+
+      // Level up logic
+      const xpToNextLevel = 100 * Math.pow(level, 1.5);
+      if (xp >= xpToNextLevel) {
+        xp -= xpToNextLevel;
+        level += 1;
+        
+        // Rank logic
+        if (level >= 50) rank = "Légende";
+        else if (level >= 20) rank = "Maître";
+        else if (level >= 10) rank = "Expert";
+        else if (level >= 5) rank = "Vétéran";
+      }
+
+      t.update(userRef, {
+        "progression.xp": xp,
+        "progression.level": level,
+        "progression.rank": rank,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+    });
+
+    const updatedDoc = await userRef.get();
+    res.json(updatedDoc.data());
+  } catch (error) {
+    res.status(500).json({ error: "Error updating progression" });
   }
 });
 
@@ -437,6 +575,84 @@ app.delete("/api/profile/memory/:index", async (req, res) => {
   } catch (error) {
     console.error("Delete memory entry error:", error);
     res.status(500).json({ error: "Error deleting memory entry" });
+  }
+});
+
+// Global Memory Routes
+app.get("/api/global-memory", async (req, res) => {
+  const db = getDb();
+  if (!db) return res.status(500).json({ error: "Database not initialized" });
+
+  try {
+    const snapshot = await db.collection("global_memory").orderBy("updatedAt", "desc").limit(10).get();
+    const memories = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    res.json(memories);
+  } catch (error) {
+    res.status(500).json({ error: "Error fetching global memory" });
+  }
+});
+
+app.post("/api/global-memory", async (req, res) => {
+  if (!req.session?.userId) return res.status(401).json({ error: "Not authenticated" });
+  const db = getDb();
+  if (!db) return res.status(500).json({ error: "Database not initialized" });
+
+  // Check if user is admin
+  const userDoc = await db.collection("users").doc(req.session.userId).get();
+  if (!userDoc.exists || !userDoc.data()?.roles?.admin) {
+    return res.status(403).json({ error: "Admin access required" });
+  }
+
+  const { content } = req.body;
+  try {
+    await db.collection("global_memory").add({
+      content,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedBy: req.session.userId
+    });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: "Error saving global memory" });
+  }
+});
+
+// Admin Routes
+app.get("/api/admin/users", async (req, res) => {
+  if (!req.session?.userId) return res.status(401).json({ error: "Not authenticated" });
+  const db = getDb();
+  if (!db) return res.status(500).json({ error: "Database not initialized" });
+
+  const adminDoc = await db.collection("users").doc(req.session.userId).get();
+  if (!adminDoc.exists || !adminDoc.data()?.roles?.admin) {
+    return res.status(403).json({ error: "Admin access required" });
+  }
+
+  try {
+    const snapshot = await db.collection("users").get();
+    const users = snapshot.docs.map(doc => doc.data());
+    res.json(users);
+  } catch (error) {
+    res.status(500).json({ error: "Error fetching users" });
+  }
+});
+
+app.get("/api/admin/user/:userId/threads", async (req, res) => {
+  if (!req.session?.userId) return res.status(401).json({ error: "Not authenticated" });
+  const db = getDb();
+  if (!db) return res.status(500).json({ error: "Database not initialized" });
+
+  const adminDoc = await db.collection("users").doc(req.session.userId).get();
+  if (!adminDoc.exists || !adminDoc.data()?.roles?.admin) {
+    return res.status(403).json({ error: "Admin access required" });
+  }
+
+  const { userId } = req.params;
+  try {
+    const snapshot = await db.collection("users").doc(userId).collection("threads").get();
+    const threads = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    res.json(threads);
+  } catch (error) {
+    res.status(500).json({ error: "Error fetching user threads" });
   }
 });
 

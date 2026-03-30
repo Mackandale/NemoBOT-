@@ -44,7 +44,7 @@ export const useProgression = (userId: string | undefined) => {
     }
 
     try {
-      await updateDoc(userRef, updates);
+      await setDoc(userRef, updates, { merge: true });
     } catch (err) {
       console.error("Update progression error:", err);
     }
