@@ -1,7 +1,3 @@
-import { GoogleGenAI, Modality, ThinkingLevel } from "@google/genai";
-
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
-
 export interface UserProfile {
   displayName: string;
   level: number;
@@ -49,18 +45,24 @@ Réponds toujours en français, sauf si on te demande une autre langue.
 Utilise le Markdown pour structurer tes réponses.`;
 
   try {
-    const response = await ai.models.generateContent({
-      model: modelName,
-      contents: messages,
-      config: {
-        systemInstruction,
-        temperature: 0.7,
-        topP: 0.95,
-        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }
-      },
+    const response = await fetch("/api/gemini/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: modelName,
+        contents: messages,
+        config: {
+          systemInstruction,
+          temperature: 0.7,
+          topP: 0.95,
+          thinkingConfig: { thinkingLevel: 'LOW' }
+        }
+      })
     });
 
-    return response.text;
+    if (!response.ok) throw new Error("Failed to generate response");
+    const data = await response.json();
+    return data.text;
   } catch (error) {
     console.error("Error generating response:", error);
     throw error;
@@ -76,17 +78,23 @@ Retourne uniquement un tableau JSON d'objets avec 'content' et 'type' (short, me
 Exemple: [{"content": "L'utilisateur préfère le code en TypeScript", "type": "long"}]`;
 
   try {
-    const response = await ai.models.generateContent({
-      model: modelName,
-      contents: [{ role: 'user', parts: [{ text }] }],
-      config: {
-        systemInstruction,
-        responseMimeType: "application/json",
-        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }
-      },
+    const response = await fetch("/api/gemini/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: modelName,
+        contents: [{ role: 'user', parts: [{ text }] }],
+        config: {
+          systemInstruction,
+          responseMimeType: "application/json",
+          thinkingConfig: { thinkingLevel: 'LOW' }
+        }
+      })
     });
 
-    const jsonStr = response.text.trim();
+    if (!response.ok) throw new Error("Failed to extract memories");
+    const data = await response.json();
+    const jsonStr = data.text.trim();
     return JSON.parse(jsonStr) as { content: string; type: string }[];
   } catch (error) {
     console.error("Error extracting memories:", error);
@@ -96,24 +104,15 @@ Exemple: [{"content": "L'utilisateur préfère le code en TypeScript", "type": "
 
 export async function generateNemoSpeech(text: string) {
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash-preview-tts",
-      contents: [{ parts: [{ text }] }],
-      config: {
-        responseModalities: [Modality.AUDIO],
-        speechConfig: {
-          voiceConfig: {
-            prebuiltVoiceConfig: { voiceName: 'Kore' },
-          },
-        },
-      },
+    const response = await fetch("/api/gemini/tts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, voiceName: 'Kore' })
     });
 
-    const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-    if (base64Audio) {
-      return base64Audio;
-    }
-    return null;
+    if (!response.ok) throw new Error("Failed to generate speech");
+    const data = await response.json();
+    return data.audioData;
   } catch (error) {
     console.error("Error generating speech:", error);
     return null;

@@ -1,90 +1,49 @@
-import { GoogleGenAI, Modality } from "@google/genai";
 import { SYSTEM_INSTRUCTION, IMAGE_PROMPT_OPTIMIZER, MEMORY_ANALYZER_PROMPT } from "../constants";
-
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 
 export const geminiService = {
   async generateChatResponse(prompt: string, history: any[], systemInstruction: string = SYSTEM_INSTRUCTION, tools: any[] = []) {
-    const model = "gemini-3.1-pro-preview";
-    
-    const response = await ai.models.generateContent({
-      model,
-      contents: [
-        ...history,
-        { role: 'user', parts: [{ text: prompt }] }
-      ],
-      config: {
-        systemInstruction,
-        tools: tools.length > 0 ? tools : undefined,
-      }
+    const response = await fetch("/api/gemini/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt, history, systemInstruction, tools })
     });
-
-    return response;
+    
+    if (!response.ok) throw new Error("Failed to generate chat response");
+    return await response.json();
   },
 
   async generateImage(prompt: string) {
-    // 1. Optimize prompt
-    const optimizerResponse = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: [{ parts: [{ text: IMAGE_PROMPT_OPTIMIZER + prompt }] }]
+    const response = await fetch("/api/gemini/image", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt, optimizerPrompt: IMAGE_PROMPT_OPTIMIZER })
     });
     
-    const optimizedPrompt = optimizerResponse.text || prompt;
-
-    // 2. Generate image
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-image',
-      contents: [{ parts: [{ text: optimizedPrompt }] }],
-      config: {
-        imageConfig: {
-          aspectRatio: "1:1"
-        }
-      }
-    });
-
-    const imagePart = response.candidates?.[0]?.content?.parts.find(p => p.inlineData);
-    if (imagePart?.inlineData) {
-      return `data:image/png;base64,${imagePart.inlineData.data}`;
-    }
-    throw new Error("Failed to generate image");
+    if (!response.ok) throw new Error("Failed to generate image");
+    const data = await response.json();
+    return data.imageData;
   },
 
   async analyzeMemories(conversation: string) {
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: [{ parts: [{ text: MEMORY_ANALYZER_PROMPT + conversation }] }],
-      config: {
-        responseMimeType: "application/json"
-      }
+    const response = await fetch("/api/gemini/memories", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ conversation, analyzerPrompt: MEMORY_ANALYZER_PROMPT })
     });
-
-    try {
-      const data = JSON.parse(response.text || '{"memories": []}');
-      return data.memories || [];
-    } catch (e) {
-      console.error("Failed to parse memories", e);
-      return [];
-    }
+    
+    if (!response.ok) throw new Error("Failed to analyze memories");
+    return await response.json();
   },
 
   async textToSpeech(text: string, voiceName: string = 'Zephyr') {
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash-preview-tts",
-      contents: [{ parts: [{ text }] }],
-      config: {
-        responseModalities: [Modality.AUDIO],
-        speechConfig: {
-          voiceConfig: {
-            prebuiltVoiceConfig: { voiceName }
-          }
-        }
-      }
+    const response = await fetch("/api/gemini/tts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, voiceName })
     });
-
-    const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-    if (base64Audio) {
-      return base64Audio;
-    }
-    throw new Error("Failed to generate speech");
+    
+    if (!response.ok) throw new Error("Failed to generate speech");
+    const data = await response.json();
+    return data.audioData;
   }
 };

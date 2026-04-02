@@ -1,70 +1,60 @@
 import React from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { X, Download, Share2, Maximize2 } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { Download, X } from 'lucide-react';
 
 interface ImageModalProps {
   isOpen: boolean;
-  imageUrl: string;
+  imageUrl: string | null;
   onClose: () => void;
 }
 
-export const ImageModal: React.FC<ImageModalProps> = ({ isOpen, imageUrl, onClose }) => {
-  return (
-    <AnimatePresence>
-      {isOpen && (
-        <motion.div 
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-2xl flex items-center justify-center p-4 md:p-12"
-          onClick={onClose}
-        >
-          <motion.div 
-            initial={{ scale: 0.9, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            exit={{ scale: 0.9, opacity: 0 }}
-            className="relative max-w-5xl w-full h-full flex flex-col items-center justify-center gap-8"
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="absolute top-0 right-0 flex items-center gap-4">
-              <button 
-                onClick={() => window.open(imageUrl, '_blank')}
-                className="p-3 bg-white/10 hover:bg-white/20 rounded-full text-white transition-all backdrop-blur-md"
-                title="Plein Écran"
-              >
-                <Maximize2 className="w-5 h-5" />
-              </button>
-              <button 
-                className="p-3 bg-white/10 hover:bg-white/20 rounded-full text-white transition-all backdrop-blur-md"
-                title="Télécharger"
-              >
-                <Download className="w-5 h-5" />
-              </button>
-              <button 
-                onClick={onClose}
-                className="p-3 bg-white/10 hover:bg-white/20 rounded-full text-white transition-all backdrop-blur-md"
-                title="Fermer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            
-            <img 
-              src={imageUrl} 
-              alt="Generated" 
-              className="max-w-full max-h-[80vh] object-contain rounded-3xl shadow-2xl shadow-violet-500/20"
-              referrerPolicy="no-referrer"
-            />
+export const ImageModal = ({ 
+  isOpen, 
+  imageUrl, 
+  onClose 
+}: ImageModalProps) => {
+  if (!isOpen || !imageUrl) return null;
 
-            <div className="flex items-center gap-6">
-              <button className="flex items-center gap-3 px-8 py-4 bg-violet-500 hover:bg-violet-600 rounded-2xl text-white font-bold transition-all shadow-xl shadow-violet-500/20">
-                <Share2 className="w-5 h-5" />
-                Partager l'œuvre
-              </button>
-            </div>
-          </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>
+  const handleDownload = () => {
+    const link = document.createElement("a");
+    link.href = imageUrl;
+    link.download = `nemo-image-${Date.now()}.png`;
+    link.click();
+  };
+
+  return (
+    <motion.div 
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[200] bg-background/95 backdrop-blur-2xl flex items-center justify-center p-4 md:p-12"
+      onClick={onClose}
+    >
+      <div className="relative max-w-full max-h-full flex flex-col items-center gap-6" onClick={e => e.stopPropagation()}>
+        <img 
+          src={imageUrl} 
+          alt="Full screen" 
+          className="max-w-full max-h-[85vh] object-contain rounded-2xl shadow-2xl border border-foreground/10" 
+          referrerPolicy="no-referrer"
+        />
+        
+        <div className="flex items-center gap-4">
+          <button 
+            onClick={handleDownload}
+            className="flex items-center gap-2 px-6 py-3 bg-violet-600 hover:bg-violet-500 text-white rounded-full font-bold uppercase tracking-widest text-xs transition-all shadow-xl"
+          >
+            <Download className="w-4 h-4" />
+            Télécharger
+          </button>
+          <button 
+            onClick={onClose}
+            className="flex items-center gap-2 px-6 py-3 bg-foreground/10 hover:bg-foreground/20 text-foreground rounded-full font-bold uppercase tracking-widest text-xs transition-all border border-foreground/10"
+          >
+            <X className="w-4 h-4" />
+            Fermer
+          </button>
+        </div>
+      </div>
+    </motion.div>
   );
 };

@@ -17,10 +17,13 @@ export const useMemory = (userId: string | undefined) => {
         const data = doc.data();
         return {
           id: doc.id,
+          userId: userId,
+          type: data.type || 'behavior',
+          key: data.key || 'general',
           content: data.content || '',
-          category: data.category || 'general',
-          priority: data.priority || 'medium',
-          timestamp: data.timestamp?.toDate() || new Date()
+          importance: data.importance || 1,
+          createdAt: data.createdAt || data.timestamp || serverTimestamp(),
+          lastUsed: data.lastUsed || data.timestamp || serverTimestamp()
         };
       }) as Memory[];
       setMemories(mems);

@@ -15,13 +15,39 @@ service cloud.firestore {
     }
     
     function isAdmin() {
+      let userDoc = get(/databases/$(database)/documents/users/$(request.auth.uid));
       return isAuthenticated() && 
-        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.roles.admin == true ||
+        ((userDoc.exists && userDoc.data().roles.admin == true) ||
          (request.auth.token.email == "mackandaledardayes@gmail.com" && request.auth.token.email_verified == true));
     }
-
+    
     function fieldUnchanged(field) {
       return !(field in request.resource.data) || request.resource.data[field] == resource.data[field];
+    }
+    
+    function isValidString(field, minLen, maxLen) {
+      return request.resource.data[field] is string && 
+             request.resource.data[field].size() >= minLen && 
+             request.resource.data[field].size() <= maxLen;
+    }
+    
+    function isValidBoolean(field) {
+      return request.resource.data[field] is bool;
+    }
+    
+    function isValidNumber(field, minVal, maxVal) {
+      return request.resource.data[field] is number && 
+             request.resource.data[field] >= minVal && 
+             request.resource.data[field] <= maxVal;
+    }
+    
+    function isValidTimestamp(field) {
+      return request.resource.data[field] is timestamp;
+    }
+    
+    function canAccessConversation(conversationId) {
+      let convDoc = get(/databases/$(database)/documents/conversations/$(conversationId));
+      return convDoc.exists && (convDoc.data().ownerUid == request.auth.uid || isAdmin());
     }
 
     // ===============================================================
@@ -30,8 +56,8 @@ service cloud.firestore {
     
     match /users/{userId} {
       allow read: if isOwner(userId) || isAdmin();
-      allow create: if isAuthenticated() && request.auth.uid == userId;
-      allow update: if (isOwner(userId) || isAdmin()) && fieldUnchanged('uid');
+      allow create: if isAuthenticated() && request.auth.uid == userId && isValidString('name', 1, 100);
+      allow update: if (isOwner(userId) || isAdmin()) && fieldUnchanged('uid') && isValidString('name', 1, 100);
     }
 
     // ===============================================================
@@ -40,8 +66,8 @@ service cloud.firestore {
     
     match /conversations/{conversationId} {
       allow read: if isAuthenticated() && (resource.data.ownerUid == request.auth.uid || isAdmin());
-      allow create: if isAuthenticated() && request.resource.data.ownerUid == request.auth.uid;
-      allow update: if isAuthenticated() && (resource.data.ownerUid == request.auth.uid || isAdmin()) && fieldUnchanged('ownerUid');
+      allow create: if isAuthenticated() && request.resource.data.ownerUid == request.auth.uid && isValidString('title', 1, 200);
+      allow update: if isAuthenticated() && (resource.data.ownerUid == request.auth.uid || isAdmin()) && fieldUnchanged('ownerUid') && isValidString('title', 1, 200);
       allow delete: if isAuthenticated() && (resource.data.ownerUid == request.auth.uid || isAdmin());
     }
 
@@ -50,13 +76,9 @@ service cloud.firestore {
     // ===============================================================
     
     match /messages/{messageId} {
-      function canAccessConversation(conversationId) {
-        return get(/databases/$(database)/documents/conversations/$(conversationId)).data.ownerUid == request.auth.uid || isAdmin();
-      }
-
       allow read: if isAuthenticated() && canAccessConversation(resource.data.conversationId);
-      allow create: if isAuthenticated() && canAccessConversation(request.resource.data.conversationId);
-      allow update: if isAuthenticated() && canAccessConversation(resource.data.conversationId) && fieldUnchanged('conversationId');
+      allow create: if isAuthenticated() && canAccessConversation(request.resource.data.conversationId) && isValidString('content', 1, 5000);
+      allow update: if isAuthenticated() && canAccessConversation(resource.data.conversationId) && fieldUnchanged('conversationId') && isValidString('content', 1, 5000);
       allow delete: if isAuthenticated() && canAccessConversation(resource.data.conversationId);
     }
 
@@ -66,9 +88,18 @@ service cloud.firestore {
     
     match /memory/{memoryId} {
       allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
-      allow update: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin()) && fieldUnchanged('userId');
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid && isValidString('content', 1, 2000);
+      allow update: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin()) && fieldUnchanged('userId') && isValidString('content', 1, 2000);
       allow delete: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+    }
+
+    // ===============================================================
+    // Global Memory
+    // ===============================================================
+    
+    match /global_memory/{memoryId} {
+      allow read: if true; // Publicly readable
+      allow write: if isAdmin();
     }
 
     // ===============================================================

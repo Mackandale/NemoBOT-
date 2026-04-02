@@ -4,8 +4,21 @@ import cookieSession from "cookie-session";
 import dotenv from "dotenv";
 import path from "path";
 import admin from "firebase-admin";
+import { GoogleGenAI, Modality } from "@google/genai";
 
 dotenv.config();
+
+// Initialize Gemini
+const getGeminiAI = () => {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey || apiKey.includes('...') || apiKey.includes('YOUR_API_KEY')) {
+    console.warn("GEMINI_API_KEY is missing or a placeholder. Gemini features will be disabled.");
+    return null;
+  }
+  return new GoogleGenAI({ apiKey });
+};
+
+const ai = getGeminiAI();
 
 // Initialize Firebase Admin
 const initializeFirebase = () => {
@@ -102,10 +115,145 @@ app.use(
     name: "session",
     keys: [process.env.SESSION_SECRET || "nemo-secret"],
     maxAge: 24 * 60 * 60 * 1000,
-    secure: true,
-    sameSite: "none",
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
   })
 );
+
+// Gemini API Routes
+app.post("/api/gemini/generate", async (req, res) => {
+  if (!req.session?.userId) return res.status(401).json({ error: "Not authenticated" });
+  if (!ai) return res.status(503).json({ error: "Gemini service unavailable" });
+  const { model, contents, config } = req.body;
+  
+  try {
+    const response = await ai.models.generateContent({
+      model: model || "gemini-3-flash-preview",
+      contents,
+      config
+    });
+    res.json(response);
+  } catch (error) {
+    console.error("Gemini Generate Error:", error);
+    res.status(500).json({ error: "Error generating content" });
+  }
+});
+
+app.post("/api/gemini/chat", async (req, res) => {
+  if (!req.session?.userId) return res.status(401).json({ error: "Not authenticated" });
+  if (!ai) return res.status(503).json({ error: "Gemini service unavailable" });
+  const { prompt, history, systemInstruction, tools } = req.body;
+  
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-3.1-pro-preview",
+      contents: [
+        ...history,
+        { role: 'user', parts: [{ text: prompt }] }
+      ],
+      config: {
+        systemInstruction,
+        tools: tools && tools.length > 0 ? tools : undefined,
+      }
+    });
+    res.json(response);
+  } catch (error) {
+    console.error("Gemini Chat Error:", error);
+    res.status(500).json({ error: "Error generating chat response" });
+  }
+});
+
+app.post("/api/gemini/image", async (req, res) => {
+  if (!req.session?.userId) return res.status(401).json({ error: "Not authenticated" });
+  if (!ai) return res.status(503).json({ error: "Gemini service unavailable" });
+  const { prompt, optimizerPrompt, aspectRatio } = req.body;
+  
+  try {
+    let finalPrompt = prompt;
+    if (optimizerPrompt) {
+      // 1. Optimize prompt
+      const optimizerResponse = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: [{ parts: [{ text: optimizerPrompt + prompt }] }]
+      });
+      finalPrompt = optimizerResponse.text || prompt;
+    }
+
+    // 2. Generate image
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash-image',
+      contents: [{ parts: [{ text: finalPrompt }] }],
+      config: {
+        imageConfig: {
+          aspectRatio: aspectRatio || "1:1"
+        }
+      }
+    });
+
+    const imagePart = response.candidates?.[0]?.content?.parts.find(p => p.inlineData);
+    if (imagePart?.inlineData) {
+      res.json({ imageData: `data:image/png;base64,${imagePart.inlineData.data}` });
+    } else {
+      throw new Error("Failed to generate image");
+    }
+  } catch (error) {
+    console.error("Gemini Image Error:", error);
+    res.status(500).json({ error: "Error generating image" });
+  }
+});
+
+app.post("/api/gemini/memories", async (req, res) => {
+  if (!req.session?.userId) return res.status(401).json({ error: "Not authenticated" });
+  if (!ai) return res.status(503).json({ error: "Gemini service unavailable" });
+  const { conversation, analyzerPrompt } = req.body;
+  
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: [{ parts: [{ text: analyzerPrompt + conversation }] }],
+      config: {
+        responseMimeType: "application/json"
+      }
+    });
+
+    const data = JSON.parse(response.text || '{"memories": []}');
+    res.json(data.memories || []);
+  } catch (error) {
+    console.error("Gemini Memories Error:", error);
+    res.status(500).json({ error: "Error analyzing memories" });
+  }
+});
+
+app.post("/api/gemini/tts", async (req, res) => {
+  if (!req.session?.userId) return res.status(401).json({ error: "Not authenticated" });
+  if (!ai) return res.status(503).json({ error: "Gemini service unavailable" });
+  const { text, voiceName } = req.body;
+  
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash-preview-tts",
+      contents: [{ parts: [{ text }] }],
+      config: {
+        responseModalities: [Modality.AUDIO],
+        speechConfig: {
+          voiceConfig: {
+            prebuiltVoiceConfig: { voiceName: voiceName || 'Zephyr' }
+          }
+        }
+      }
+    });
+
+    const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    if (base64Audio) {
+      res.json({ audioData: base64Audio });
+    } else {
+      throw new Error("Failed to generate speech");
+    }
+  } catch (error) {
+    console.error("Gemini TTS Error:", error);
+    res.status(500).json({ error: "Error generating speech" });
+  }
+});
 
 // Auth Routes
 app.post("/api/login/firebase", async (req, res) => {
